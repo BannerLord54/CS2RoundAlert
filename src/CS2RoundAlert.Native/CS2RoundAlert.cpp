@@ -1,0 +1,910 @@
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <knownfolders.h>
+#include <mmsystem.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <shellapi.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <regex>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <vector>
+
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "ws2_32.lib")
+
+namespace fs = std::filesystem;
+
+constexpr UINT WM_TRAYICON = WM_APP + 1;
+constexpr UINT ID_TRAY = 100;
+constexpr UINT ID_ENABLE = 200;
+constexpr UINT ID_OPEN_SETTINGS = 201;
+constexpr UINT ID_OPEN_GITHUB = 202;
+constexpr UINT ID_LANG_AUTO = 203;
+constexpr UINT ID_LANG_EN = 204;
+constexpr UINT ID_LANG_ZH = 205;
+constexpr UINT ID_QUIT = 206;
+
+constexpr wchar_t AppName[] = L"CS2RoundAlert";
+constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
+constexpr wchar_t ConfigFileName[] = L"gamestate_integration_cs2roundalert.cfg";
+constexpr wchar_t Cs2FolderName[] = L"Counter-Strike Global Offensive";
+
+struct Settings
+{
+    int port = 3000;
+    bool enabled = true;
+    bool alertOnlyWhenNotFocused = true;
+    bool useSystemSound = true;
+    std::wstring customWavPath;
+    std::wstring cs2CfgFolderPath;
+    bool firstRunNotificationShown = false;
+    std::wstring language = L"auto";
+};
+
+std::wstring Utf8ToWide(const std::string& value)
+{
+    if (value.empty())
+    {
+        return {};
+    }
+
+    const int length = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    std::wstring result(length, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), length);
+    return result;
+}
+
+std::string WideToUtf8(const std::wstring& value)
+{
+    if (value.empty())
+    {
+        return {};
+    }
+
+    const int length = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+    std::string result(length, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), length, nullptr, nullptr);
+    return result;
+}
+
+std::wstring Lower(std::wstring value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+    return value;
+}
+
+std::string ReadText(const fs::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+    {
+        return {};
+    }
+
+    std::ostringstream stream;
+    stream << file.rdbuf();
+    return stream.str();
+}
+
+void WriteText(const fs::path& path, const std::string& text)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << text;
+}
+
+std::wstring AppDataDirectory()
+{
+    PWSTR rawPath = nullptr;
+    std::wstring result;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &rawPath)))
+    {
+        result = rawPath;
+        CoTaskMemFree(rawPath);
+    }
+
+    return (fs::path(result) / AppName).wstring();
+}
+
+std::wstring SettingsPath()
+{
+    return (fs::path(AppDataDirectory()) / L"settings.json").wstring();
+}
+
+std::string EscapeJson(const std::wstring& value)
+{
+    std::string utf8 = WideToUtf8(value);
+    std::string result;
+    result.reserve(utf8.size());
+
+    for (char c : utf8)
+    {
+        if (c == '\\' || c == '"')
+        {
+            result.push_back('\\');
+        }
+        result.push_back(c);
+    }
+
+    return result;
+}
+
+std::string UnescapeJsonString(std::string value)
+{
+    std::string result;
+    result.reserve(value.size());
+
+    for (size_t i = 0; i < value.size(); ++i)
+    {
+        if (value[i] == '\\' && i + 1 < value.size())
+        {
+            result.push_back(value[++i]);
+            continue;
+        }
+
+        result.push_back(value[i]);
+    }
+
+    return result;
+}
+
+bool ReadBool(const std::string& json, const std::string& name, bool fallback)
+{
+    const std::regex pattern("\"" + name + "\"\\s*:\\s*(true|false)", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_search(json, match, pattern))
+    {
+        return match[1].str() == "true" || match[1].str() == "TRUE";
+    }
+
+    return fallback;
+}
+
+int ReadInt(const std::string& json, const std::string& name, int fallback)
+{
+    const std::regex pattern("\"" + name + "\"\\s*:\\s*(\\d+)", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_search(json, match, pattern))
+    {
+        const int value = std::stoi(match[1].str());
+        return value > 0 && value <= 65535 ? value : fallback;
+    }
+
+    return fallback;
+}
+
+std::wstring ReadString(const std::string& json, const std::string& name, const std::wstring& fallback)
+{
+    const std::regex pattern("\"" + name + "\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_search(json, match, pattern))
+    {
+        return Utf8ToWide(UnescapeJsonString(match[1].str()));
+    }
+
+    return fallback;
+}
+
+Settings LoadSettings()
+{
+    Settings settings;
+    const std::string json = ReadText(SettingsPath());
+    if (json.empty())
+    {
+        return settings;
+    }
+
+    settings.port = ReadInt(json, "port", settings.port);
+    settings.enabled = ReadBool(json, "enabled", settings.enabled);
+    settings.alertOnlyWhenNotFocused = ReadBool(json, "alertOnlyWhenNotFocused", settings.alertOnlyWhenNotFocused);
+    settings.useSystemSound = ReadBool(json, "useSystemSound", settings.useSystemSound);
+    settings.customWavPath = ReadString(json, "customWavPath", settings.customWavPath);
+    settings.cs2CfgFolderPath = ReadString(json, "cs2CfgFolderPath", settings.cs2CfgFolderPath);
+    settings.firstRunNotificationShown = ReadBool(json, "firstRunNotificationShown", settings.firstRunNotificationShown);
+    settings.language = ReadString(json, "language", settings.language);
+
+    if (settings.language != L"auto" && settings.language != L"en" && settings.language != L"zh-CN")
+    {
+        settings.language = L"auto";
+    }
+
+    return settings;
+}
+
+void SaveSettings(const Settings& settings)
+{
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"port\": " << settings.port << ",\n";
+    json << "  \"enabled\": " << (settings.enabled ? "true" : "false") << ",\n";
+    json << "  \"alertOnlyWhenNotFocused\": " << (settings.alertOnlyWhenNotFocused ? "true" : "false") << ",\n";
+    json << "  \"useSystemSound\": " << (settings.useSystemSound ? "true" : "false") << ",\n";
+    json << "  \"customWavPath\": \"" << EscapeJson(settings.customWavPath) << "\",\n";
+    json << "  \"cs2CfgFolderPath\": \"" << EscapeJson(settings.cs2CfgFolderPath) << "\",\n";
+    json << "  \"firstRunNotificationShown\": " << (settings.firstRunNotificationShown ? "true" : "false") << ",\n";
+    json << "  \"language\": \"" << EscapeJson(settings.language) << "\"\n";
+    json << "}\n";
+
+    WriteText(SettingsPath(), json.str());
+}
+
+bool UseChinese(const Settings& settings)
+{
+    if (settings.language == L"zh-CN")
+    {
+        return true;
+    }
+
+    if (settings.language == L"en")
+    {
+        return false;
+    }
+
+    return PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
+}
+
+std::wstring Text(const Settings& settings, const std::wstring& key)
+{
+    const bool zh = UseChinese(settings);
+
+    if (key == L"EnableAlerts") return zh ? L"开启提示音" : L"Enable alerts";
+    if (key == L"OpenSettingsFolder") return zh ? L"打开设置文件夹" : L"Open settings folder";
+    if (key == L"OpenGitHubRepo") return zh ? L"打开 GitHub 仓库" : L"Open GitHub repo";
+    if (key == L"Language") return zh ? L"语言" : L"Language";
+    if (key == L"LanguageAuto") return zh ? L"自动（跟随系统）" : L"Auto (system)";
+    if (key == L"LanguageEnglish") return L"English";
+    if (key == L"LanguageChinese") return L"中文";
+    if (key == L"Quit") return zh ? L"退出" : L"Quit";
+    if (key == L"SelectCfgDescription") return zh ? L"选择 CS2 cfg 文件夹，或选择 Counter-Strike Global Offensive 文件夹。" : L"Select the CS2 cfg folder or the Counter-Strike Global Offensive folder.";
+    if (key == L"InvalidCfgFolder") return zh ? L"这个文件夹不像 CS2 cfg 文件夹。请选择 Counter-Strike Global Offensive\\game\\csgo\\cfg。" : L"That folder does not look like the CS2 cfg folder. Select Counter-Strike Global Offensive\\game\\csgo\\cfg.";
+    if (key == L"GsiConfigNotInstalled") return zh ? L"未安装 GSI 配置。请重启程序并选择 CS2 cfg 文件夹。" : L"GSI config was not installed. Restart the app to choose the CS2 cfg folder.";
+    if (key == L"GsiConfigInstalled") return zh ? L"GSI 配置已安装到：" : L"GSI config installed at:";
+    if (key == L"GsiConfigWriteFailed") return zh ? L"无法写入 GSI 配置：" : L"Could not write the GSI config:";
+    if (key == L"ListenFailed") return zh ? L"无法监听本地端口。" : L"Could not listen on the local port.";
+
+    return key;
+}
+
+std::vector<std::wstring> SteamLibraries()
+{
+    std::vector<std::wstring> libraries;
+    wchar_t programFilesX86[MAX_PATH]{};
+    GetEnvironmentVariableW(L"ProgramFiles(x86)", programFilesX86, MAX_PATH);
+
+    fs::path defaultSteam = fs::path(programFilesX86) / L"Steam";
+    if (fs::exists(defaultSteam))
+    {
+        libraries.push_back(defaultSteam.wstring());
+    }
+
+    const fs::path libraryFile = defaultSteam / L"steamapps" / L"libraryfolders.vdf";
+    const std::string content = ReadText(libraryFile);
+    const std::regex pattern("\"path\"\\s+\"([^\"]+)\"", std::regex_constants::icase);
+
+    for (std::sregex_iterator it(content.begin(), content.end(), pattern), end; it != end; ++it)
+    {
+        std::string raw = (*it)[1].str();
+        for (size_t pos = 0; (pos = raw.find("\\\\", pos)) != std::string::npos;)
+        {
+            raw.replace(pos, 2, "\\");
+            ++pos;
+        }
+
+        std::wstring path = Utf8ToWide(raw);
+        if (fs::exists(path) && std::find(libraries.begin(), libraries.end(), path) == libraries.end())
+        {
+            libraries.push_back(path);
+        }
+    }
+
+    return libraries;
+}
+
+std::wstring ResolveCfgDirectory(const std::wstring& selected)
+{
+    const fs::path base(selected);
+    const std::vector<fs::path> candidates = {
+        base,
+        base / L"game" / L"csgo" / L"cfg",
+        base / Cs2FolderName / L"game" / L"csgo" / L"cfg",
+        base / L"steamapps" / L"common" / Cs2FolderName / L"game" / L"csgo" / L"cfg"
+    };
+
+    for (const fs::path& candidate : candidates)
+    {
+        if (fs::exists(candidate) && fs::is_directory(candidate))
+        {
+            const std::wstring lower = Lower(candidate.wstring());
+            if (lower.ends_with(L"game\\csgo\\cfg") || lower.ends_with(L"game/csgo/cfg"))
+            {
+                return candidate.wstring();
+            }
+        }
+    }
+
+    return {};
+}
+
+std::wstring FindCs2CfgDirectory(const Settings& settings)
+{
+    if (!settings.cs2CfgFolderPath.empty() && fs::exists(settings.cs2CfgFolderPath))
+    {
+        return settings.cs2CfgFolderPath;
+    }
+
+    for (const std::wstring& library : SteamLibraries())
+    {
+        const fs::path cfg = fs::path(library) / L"steamapps" / L"common" / Cs2FolderName / L"game" / L"csgo" / L"cfg";
+        if (fs::exists(cfg))
+        {
+            return cfg.wstring();
+        }
+    }
+
+    return {};
+}
+
+std::wstring PickCfgDirectory(HWND owner, const Settings& settings)
+{
+    IFileDialog* dialog = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))))
+    {
+        return {};
+    }
+
+    DWORD options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+    dialog->SetTitle(Text(settings, L"SelectCfgDescription").c_str());
+
+    std::wstring result;
+    if (SUCCEEDED(dialog->Show(owner)))
+    {
+        IShellItem* item = nullptr;
+        if (SUCCEEDED(dialog->GetResult(&item)))
+        {
+            PWSTR path = nullptr;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+            {
+                result = ResolveCfgDirectory(path);
+                CoTaskMemFree(path);
+            }
+            item->Release();
+        }
+    }
+
+    dialog->Release();
+    return result;
+}
+
+std::string BuildGsiConfig(int port)
+{
+    std::ostringstream config;
+    config << "\"CS2RoundAlert\"\n";
+    config << "{\n";
+    config << "    \"uri\" \"http://127.0.0.1:" << port << "\"\n";
+    config << "    \"timeout\" \"5.0\"\n";
+    config << "    \"buffer\" \"0.1\"\n";
+    config << "    \"throttle\" \"0.5\"\n";
+    config << "    \"heartbeat\" \"10.0\"\n";
+    config << "    \"data\"\n";
+    config << "    {\n";
+    config << "        \"round\" \"1\"\n";
+    config << "        \"map\"   \"1\"\n";
+    config << "    }\n";
+    config << "}\n";
+    return config.str();
+}
+
+std::wstring EnsureGsiConfig(HWND owner, Settings& settings)
+{
+    std::wstring cfg = FindCs2CfgDirectory(settings);
+    if (cfg.empty())
+    {
+        cfg = PickCfgDirectory(owner, settings);
+    }
+
+    if (cfg.empty())
+    {
+        return Text(settings, L"GsiConfigNotInstalled");
+    }
+
+    try
+    {
+        const fs::path configPath = fs::path(cfg) / ConfigFileName;
+        WriteText(configPath, BuildGsiConfig(settings.port));
+        settings.cs2CfgFolderPath = cfg;
+        return Text(settings, L"GsiConfigInstalled") + L" " + configPath.wstring();
+    }
+    catch (...)
+    {
+        return Text(settings, L"GsiConfigWriteFailed");
+    }
+}
+
+bool IsCs2Foreground()
+{
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd)
+    {
+        return false;
+    }
+
+    DWORD processId = 0;
+    GetWindowThreadProcessId(hwnd, &processId);
+    if (!processId)
+    {
+        return false;
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (!process)
+    {
+        return false;
+    }
+
+    wchar_t path[MAX_PATH]{};
+    DWORD size = MAX_PATH;
+    const bool ok = QueryFullProcessImageNameW(process, 0, path, &size) != 0;
+    CloseHandle(process);
+
+    if (!ok)
+    {
+        return false;
+    }
+
+    return Lower(fs::path(path).filename().wstring()) == L"cs2.exe";
+}
+
+size_t MatchingBrace(const std::string& text, size_t open)
+{
+    int depth = 0;
+    bool inString = false;
+    bool escape = false;
+
+    for (size_t i = open; i < text.size(); ++i)
+    {
+        const char c = text[i];
+        if (escape)
+        {
+            escape = false;
+            continue;
+        }
+
+        if (c == '\\')
+        {
+            escape = true;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            inString = !inString;
+            continue;
+        }
+
+        if (inString)
+        {
+            continue;
+        }
+
+        if (c == '{')
+        {
+            ++depth;
+        }
+        else if (c == '}')
+        {
+            --depth;
+            if (depth == 0)
+            {
+                return i;
+            }
+        }
+    }
+
+    return std::string::npos;
+}
+
+std::string ExtractRoundPhase(const std::string& body)
+{
+    const size_t round = body.find("\"round\"");
+    if (round == std::string::npos)
+    {
+        return {};
+    }
+
+    const size_t open = body.find('{', round);
+    if (open == std::string::npos)
+    {
+        return {};
+    }
+
+    const size_t close = MatchingBrace(body, open);
+    if (close == std::string::npos)
+    {
+        return {};
+    }
+
+    const std::string roundObject = body.substr(open, close - open + 1);
+    const std::regex phasePattern("\"phase\"\\s*:\\s*\"([^\"]+)\"", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_search(roundObject, match, phasePattern))
+    {
+        return match[1].str();
+    }
+
+    return {};
+}
+
+int ContentLength(const std::string& request)
+{
+    const std::regex pattern("content-length\\s*:\\s*(\\d+)", std::regex_constants::icase);
+    std::smatch match;
+    if (std::regex_search(request, match, pattern))
+    {
+        return std::stoi(match[1].str());
+    }
+
+    return 0;
+}
+
+class App
+{
+public:
+    int Run(HINSTANCE instance)
+    {
+        _instance = instance;
+        _settings = LoadSettings();
+
+        const wchar_t className[] = L"CS2RoundAlertWindow";
+        WNDCLASSW wc{};
+        wc.lpfnWndProc = WindowProc;
+        wc.hInstance = instance;
+        wc.lpszClassName = className;
+        RegisterClassW(&wc);
+
+        _hwnd = CreateWindowExW(0, className, AppName, 0, 0, 0, 0, 0, nullptr, nullptr, instance, this);
+        if (!_hwnd)
+        {
+            return 1;
+        }
+
+        const std::wstring installMessage = EnsureGsiConfig(_hwnd, _settings);
+        SaveSettings(_settings);
+        AddTrayIcon();
+        StartServer();
+
+        if (!_settings.firstRunNotificationShown)
+        {
+            ShowBalloon(installMessage, NIIF_INFO);
+            _settings.firstRunNotificationShown = true;
+            SaveSettings(_settings);
+        }
+
+        MSG msg{};
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0)
+        {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+
+        StopServer();
+        RemoveTrayIcon();
+        return 0;
+    }
+
+private:
+    HINSTANCE _instance{};
+    HWND _hwnd{};
+    NOTIFYICONDATAW _tray{};
+    Settings _settings;
+    std::mutex _settingsMutex;
+    std::thread _serverThread;
+    std::atomic<bool> _running = false;
+    SOCKET _listenSocket = INVALID_SOCKET;
+    std::string _lastPhase;
+
+    static LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        App* app = reinterpret_cast<App*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (message == WM_NCCREATE)
+        {
+            auto create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+            app = reinterpret_cast<App*>(create->lpCreateParams);
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+        }
+
+        if (app)
+        {
+            return app->HandleMessage(message, wParam, lParam);
+        }
+
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    }
+
+    LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        if (message == WM_TRAYICON && LOWORD(lParam) == WM_RBUTTONUP)
+        {
+            ShowMenu();
+            return 0;
+        }
+
+        if (message == WM_COMMAND)
+        {
+            HandleCommand(LOWORD(wParam));
+            return 0;
+        }
+
+        if (message == WM_DESTROY)
+        {
+            PostQuitMessage(0);
+            return 0;
+        }
+
+        return DefWindowProcW(_hwnd, message, wParam, lParam);
+    }
+
+    void AddTrayIcon()
+    {
+        _tray = {};
+        _tray.cbSize = sizeof(_tray);
+        _tray.hWnd = _hwnd;
+        _tray.uID = ID_TRAY;
+        _tray.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        _tray.uCallbackMessage = WM_TRAYICON;
+        _tray.hIcon = LoadIconW(nullptr, IDI_INFORMATION);
+        wcscpy_s(_tray.szTip, AppName);
+        Shell_NotifyIconW(NIM_ADD, &_tray);
+    }
+
+    void RemoveTrayIcon()
+    {
+        Shell_NotifyIconW(NIM_DELETE, &_tray);
+    }
+
+    void ShowBalloon(const std::wstring& message, DWORD icon)
+    {
+        NOTIFYICONDATAW data = _tray;
+        data.uFlags = NIF_INFO;
+        wcscpy_s(data.szInfoTitle, AppName);
+        wcsncpy_s(data.szInfo, message.c_str(), _TRUNCATE);
+        data.dwInfoFlags = icon;
+        Shell_NotifyIconW(NIM_MODIFY, &data);
+    }
+
+    void ShowMenu()
+    {
+        POINT point{};
+        GetCursorPos(&point);
+
+        HMENU menu = CreatePopupMenu();
+        HMENU language = CreatePopupMenu();
+
+        const bool enabled = _settings.enabled;
+        AppendMenuW(menu, MF_STRING | (enabled ? MF_CHECKED : 0), ID_ENABLE, Text(_settings, L"EnableAlerts").c_str());
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, ID_OPEN_SETTINGS, Text(_settings, L"OpenSettingsFolder").c_str());
+        AppendMenuW(menu, MF_STRING, ID_OPEN_GITHUB, Text(_settings, L"OpenGitHubRepo").c_str());
+
+        AppendMenuW(language, MF_STRING | (_settings.language == L"auto" ? MF_CHECKED : 0), ID_LANG_AUTO, Text(_settings, L"LanguageAuto").c_str());
+        AppendMenuW(language, MF_STRING | (_settings.language == L"en" ? MF_CHECKED : 0), ID_LANG_EN, Text(_settings, L"LanguageEnglish").c_str());
+        AppendMenuW(language, MF_STRING | (_settings.language == L"zh-CN" ? MF_CHECKED : 0), ID_LANG_ZH, Text(_settings, L"LanguageChinese").c_str());
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(language), Text(_settings, L"Language").c_str());
+
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, ID_QUIT, Text(_settings, L"Quit").c_str());
+
+        SetForegroundWindow(_hwnd);
+        TrackPopupMenu(menu, TPM_RIGHTBUTTON, point.x, point.y, 0, _hwnd, nullptr);
+        DestroyMenu(menu);
+    }
+
+    void HandleCommand(UINT command)
+    {
+        if (command == ID_ENABLE)
+        {
+            _settings.enabled = !_settings.enabled;
+            SaveSettings(_settings);
+            return;
+        }
+
+        if (command == ID_OPEN_SETTINGS)
+        {
+            fs::create_directories(AppDataDirectory());
+            ShellExecuteW(nullptr, L"open", AppDataDirectory().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            return;
+        }
+
+        if (command == ID_OPEN_GITHUB)
+        {
+            ShellExecuteW(nullptr, L"open", RepositoryUrl, nullptr, nullptr, SW_SHOWNORMAL);
+            return;
+        }
+
+        if (command == ID_LANG_AUTO || command == ID_LANG_EN || command == ID_LANG_ZH)
+        {
+            if (command == ID_LANG_AUTO) _settings.language = L"auto";
+            if (command == ID_LANG_EN) _settings.language = L"en";
+            if (command == ID_LANG_ZH) _settings.language = L"zh-CN";
+            SaveSettings(_settings);
+            return;
+        }
+
+        if (command == ID_QUIT)
+        {
+            DestroyWindow(_hwnd);
+        }
+    }
+
+    void StartServer()
+    {
+        _running = true;
+        _serverThread = std::thread([this] { ServerLoop(); });
+    }
+
+    void StopServer()
+    {
+        _running = false;
+        if (_listenSocket != INVALID_SOCKET)
+        {
+            closesocket(_listenSocket);
+            _listenSocket = INVALID_SOCKET;
+        }
+
+        if (_serverThread.joinable())
+        {
+            _serverThread.join();
+        }
+    }
+
+    void ServerLoop()
+    {
+        WSADATA data{};
+        if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
+        {
+            return;
+        }
+
+        _listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (_listenSocket == INVALID_SOCKET)
+        {
+            WSACleanup();
+            return;
+        }
+
+        BOOL reuse = TRUE;
+        setsockopt(_listenSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(static_cast<u_short>(_settings.port));
+        inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
+
+        if (bind(_listenSocket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
+            listen(_listenSocket, SOMAXCONN) == SOCKET_ERROR)
+        {
+            ShowBalloon(Text(_settings, L"ListenFailed"), NIIF_ERROR);
+            closesocket(_listenSocket);
+            _listenSocket = INVALID_SOCKET;
+            WSACleanup();
+            return;
+        }
+
+        while (_running)
+        {
+            SOCKET client = accept(_listenSocket, nullptr, nullptr);
+            if (client == INVALID_SOCKET)
+            {
+                continue;
+            }
+
+            HandleClient(client);
+            closesocket(client);
+        }
+
+        WSACleanup();
+    }
+
+    void HandleClient(SOCKET client)
+    {
+        std::string request;
+        char buffer[4096]{};
+
+        while (request.find("\r\n\r\n") == std::string::npos && request.size() < 65536)
+        {
+            const int received = recv(client, buffer, sizeof(buffer), 0);
+            if (received <= 0)
+            {
+                break;
+            }
+            request.append(buffer, received);
+        }
+
+        const size_t headerEnd = request.find("\r\n\r\n");
+        if (headerEnd != std::string::npos)
+        {
+            const int contentLength = ContentLength(request);
+            const size_t bodyStart = headerEnd + 4;
+            while (request.size() < bodyStart + static_cast<size_t>(contentLength) && request.size() < 1024 * 1024)
+            {
+                const int received = recv(client, buffer, sizeof(buffer), 0);
+                if (received <= 0)
+                {
+                    break;
+                }
+                request.append(buffer, received);
+            }
+
+            if (request.size() >= bodyStart)
+            {
+                ProcessPayload(request.substr(bodyStart));
+            }
+        }
+
+        const char response[] = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
+        send(client, response, sizeof(response) - 1, 0);
+    }
+
+    void ProcessPayload(const std::string& body)
+    {
+        const std::string phase = ExtractRoundPhase(body);
+        if (phase.empty())
+        {
+            return;
+        }
+
+        const bool enteredFreezetime = _stricmp(phase.c_str(), "freezetime") == 0 && _stricmp(_lastPhase.c_str(), "freezetime") != 0;
+        _lastPhase = phase;
+
+        if (enteredFreezetime)
+        {
+            Alert();
+        }
+    }
+
+    void Alert()
+    {
+        if (!_settings.enabled)
+        {
+            return;
+        }
+
+        if (_settings.alertOnlyWhenNotFocused && IsCs2Foreground())
+        {
+            return;
+        }
+
+        if (!_settings.useSystemSound && !_settings.customWavPath.empty() && fs::exists(_settings.customWavPath))
+        {
+            PlaySoundW(_settings.customWavPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC);
+            return;
+        }
+
+        MessageBeep(MB_ICONEXCLAMATION);
+    }
+};
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
+{
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    App app;
+    const int result = app.Run(instance);
+    CoUninitialize();
+    return result;
+}
