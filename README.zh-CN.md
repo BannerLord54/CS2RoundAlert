@@ -47,7 +47,10 @@ Counter-Strike Global Offensive\game\csgo\cfg
 - `Enable alerts`：开启或关闭提示音。
 - `Open settings folder`：打开设置文件夹。
 - `Open GitHub repo`：打开项目页面。
+- `Language`：选择自动、英文或中文。
 - `Quit`：退出程序。
+
+默认是自动跟随系统语言。
 
 ## 对 CS2 安全吗？
 

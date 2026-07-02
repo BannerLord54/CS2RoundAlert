@@ -4,6 +4,7 @@ using System.Windows.Forms;
 using CS2RoundAlert.Alerting;
 using CS2RoundAlert.GameState;
 using CS2RoundAlert.Integration;
+using CS2RoundAlert.Localization;
 using CS2RoundAlert.Settings;
 using CS2RoundAlert.Windows;
 
@@ -18,6 +19,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly GsiConfigInstaller _configInstaller = new();
     private readonly SettingsService _settingsService = new();
     private readonly AppSettings _settings;
+    private readonly LocalizationService _text;
     private readonly NotifyIcon _notifyIcon;
     private readonly GsiListener _listener;
     private readonly ConfigInstallResult _configInstallResult;
@@ -25,7 +27,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     public TrayApplicationContext()
     {
         _settings = _settingsService.Load();
-        _configInstallResult = _configInstaller.EnsureInstalled(_settings);
+        _text = new LocalizationService(_settings);
+        _configInstallResult = _configInstaller.EnsureInstalled(_settings, _text);
         _settingsService.Save(_settings);
 
         _notifyIcon = CreateNotifyIcon();
@@ -38,7 +41,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private NotifyIcon CreateNotifyIcon()
     {
-        var enabledMenuItem = new ToolStripMenuItem("Enable alerts")
+        return new NotifyIcon
+        {
+            Text = "CS2RoundAlert",
+            Icon = SystemIcons.Information,
+            Visible = true,
+            ContextMenuStrip = CreateContextMenu()
+        };
+    }
+
+    private ContextMenuStrip CreateContextMenu()
+    {
+        var enabledMenuItem = new ToolStripMenuItem(_text.Text("EnableAlerts"))
         {
             Checked = _settings.Enabled,
             CheckOnClick = true
@@ -53,18 +67,47 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add(enabledMenuItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Open settings folder", null, (_, _) => OpenSettingsFolder());
-        menu.Items.Add("Open GitHub repo", null, (_, _) => OpenUrl(RepositoryUrl));
+        menu.Items.Add(_text.Text("OpenSettingsFolder"), null, (_, _) => OpenSettingsFolder());
+        menu.Items.Add(_text.Text("OpenGitHubRepo"), null, (_, _) => OpenUrl(RepositoryUrl));
+        menu.Items.Add(CreateLanguageMenu());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit", null, (_, _) => Quit());
+        menu.Items.Add(_text.Text("Quit"), null, (_, _) => Quit());
 
-        return new NotifyIcon
+        return menu;
+    }
+
+    private ToolStripMenuItem CreateLanguageMenu()
+    {
+        var languageMenu = new ToolStripMenuItem(_text.Text("Language"));
+        languageMenu.DropDownItems.Add(CreateLanguageItem(LocalizationService.AutoLanguage, _text.Text("LanguageAuto")));
+        languageMenu.DropDownItems.Add(CreateLanguageItem(LocalizationService.EnglishLanguage, _text.Text("LanguageEnglish")));
+        languageMenu.DropDownItems.Add(CreateLanguageItem(LocalizationService.ChineseLanguage, _text.Text("LanguageChinese")));
+
+        return languageMenu;
+    }
+
+    private ToolStripMenuItem CreateLanguageItem(string language, string label)
+    {
+        var item = new ToolStripMenuItem(label)
         {
-            Text = "CS2RoundAlert",
-            Icon = SystemIcons.Information,
-            Visible = true,
-            ContextMenuStrip = menu
+            Checked = _text.IsLanguageChecked(language)
         };
+
+        item.Click += (_, _) =>
+        {
+            _settings.Language = language;
+            _settingsService.Save(_settings);
+            RebuildContextMenu();
+        };
+
+        return item;
+    }
+
+    private void RebuildContextMenu()
+    {
+        var oldMenu = _notifyIcon.ContextMenuStrip;
+        _notifyIcon.ContextMenuStrip = CreateContextMenu();
+        oldMenu?.Dispose();
     }
 
     private void StartListener()
@@ -78,7 +121,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _notifyIcon.ShowBalloonTip(
                 7000,
                 "CS2RoundAlert",
-                $"Could not listen on 127.0.0.1:{_settings.Port}. {ex.Message}",
+                _text.Format("ListenError", _settings.Port, ex.Message),
                 ToolTipIcon.Error);
         }
     }

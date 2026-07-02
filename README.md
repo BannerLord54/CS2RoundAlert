@@ -47,7 +47,10 @@ Right-click the tray icon:
 - `Enable alerts`: turn alerts on or off
 - `Open settings folder`: open app settings
 - `Open GitHub repo`: open this page
+- `Language`: choose Auto, English, or Chinese
 - `Quit`: exit the app
+
+Default language is Auto.
 
 ## Is this safe for CS2?
 

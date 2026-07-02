@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using CS2RoundAlert.Localization;
 using CS2RoundAlert.Settings;
 
 namespace CS2RoundAlert.Integration;
@@ -10,18 +11,18 @@ internal sealed partial class GsiConfigInstaller
     private const string ConfigFileName = "gamestate_integration_cs2roundalert.cfg";
     private const string Cs2FolderName = "Counter-Strike Global Offensive";
 
-    public ConfigInstallResult EnsureInstalled(AppSettings settings)
+    public ConfigInstallResult EnsureInstalled(AppSettings settings, LocalizationService text)
     {
         var cfgDirectory = ResolveRememberedDirectory(settings.Cs2CfgFolderPath)
             ?? TryFindInstalledCfgDirectory()
-            ?? PromptForCfgDirectory();
+            ?? PromptForCfgDirectory(text);
 
         if (cfgDirectory is null)
         {
             return new ConfigInstallResult(
                 false,
                 null,
-                "GSI config was not installed. Restart the app to choose the CS2 cfg folder.");
+                text.Text("GsiConfigNotInstalled"));
         }
 
         try
@@ -34,11 +35,11 @@ internal sealed partial class GsiConfigInstaller
             return new ConfigInstallResult(
                 true,
                 configPath,
-                $"GSI config installed at: {configPath}");
+                text.Format("GsiConfigInstalled", configPath));
         }
         catch (Exception ex)
         {
-            return new ConfigInstallResult(false, null, $"Could not write the GSI config: {ex.Message}");
+            return new ConfigInstallResult(false, null, text.Format("GsiConfigWriteFailed", ex.Message));
         }
     }
 
@@ -98,11 +99,11 @@ internal sealed partial class GsiConfigInstaller
         }
     }
 
-    private static string? PromptForCfgDirectory()
+    private static string? PromptForCfgDirectory(LocalizationService text)
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Select the CS2 cfg folder or the Counter-Strike Global Offensive folder.",
+            Description = text.Text("SelectCfgDescription"),
             ShowNewFolderButton = false,
             UseDescriptionForTitle = true
         };
@@ -119,7 +120,7 @@ internal sealed partial class GsiConfigInstaller
         }
 
         MessageBox.Show(
-            "That folder does not look like the CS2 cfg folder. Select Counter-Strike Global Offensive\\game\\csgo\\cfg.",
+            text.Text("InvalidCfgFolder"),
             "CS2RoundAlert",
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning);

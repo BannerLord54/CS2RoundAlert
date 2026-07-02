@@ -9,4 +9,5 @@ internal sealed class AppSettings
     public string? CustomWavPath { get; set; }
     public string? Cs2CfgFolderPath { get; set; }
     public bool FirstRunNotificationShown { get; set; }
+    public string Language { get; set; } = "auto";
 }
