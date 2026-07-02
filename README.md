@@ -1,152 +1,102 @@
 # CS2RoundAlert
 
-CS2RoundAlert is a small Windows tray utility for Counter-Strike 2.
+[中文说明](README.zh-CN.md)
 
-It listens for CS2 Game State Integration (GSI) events on `127.0.0.1`, watches `round.phase`, and plays an alert sound when a round enters `freezetime`. If CS2 is already the foreground window, the alert is skipped by default.
+A small Windows tray app for Counter-Strike 2.
 
-## Why this is designed to be safe
+When a new round starts and you are tabbed out, CS2RoundAlert plays a sound so you know to switch back.
 
-CS2RoundAlert uses Valve's official Game State Integration mechanism:
+## Download
 
-<https://developer.valvesoftware.com/wiki/Counter-Strike:_Global_Offensive_Game_State_Integration>
+Download `CS2RoundAlert.exe` here:
 
-The tool:
+<https://github.com/BannerLord54/CS2RoundAlert/releases/latest>
 
-- does not read CS2 memory
-- does not inject code
-- does not hook the game process
-- does not simulate mouse or keyboard input
-- only receives JSON that CS2 sends to a local HTTP endpoint
+Download the `.exe` file, not `Source code`.
 
-This avoids the behavior normally associated with cheats or automation tools. No third-party tool can guarantee future anti-cheat policy decisions, so review the source and use it at your own risk.
+## How to use
 
-## Features
+1. Run `CS2RoundAlert.exe`.
+2. If Windows shows a warning, choose `More info` -> `Run anyway`.
+3. Start or restart CS2.
+4. Keep CS2RoundAlert running in the system tray.
 
-- Windows system tray app, no console window
-- Local GSI HTTP listener using `System.Net.HttpListener`
-- Default endpoint: `http://127.0.0.1:3000`
-- Alerts on transition into `round.phase = freezetime`
-- Skips alerts when `cs2.exe` is the foreground window
-- Automatically writes the CS2 GSI config file
-- Falls back to a folder picker if CS2 is not auto-detected
-- JSON settings in `%AppData%\CS2RoundAlert\settings.json`
-- Built with .NET 8 and WinForms
+That is all.
 
-## Install
+When the next round begins:
 
-1. Download `CS2RoundAlert.exe` from the latest GitHub Release.
-2. Run it.
-3. The app appears in the Windows system tray.
-4. On first run, it installs:
+- if CS2 is already focused, nothing happens
+- if you are in another window, a sound plays
 
-```text
-gamestate_integration_cs2roundalert.cfg
-```
+## First run
 
-into:
+On first run, the app installs a CS2 Game State Integration config file automatically.
+
+If it cannot find CS2, it will ask you to choose the CS2 config folder:
 
 ```text
 Counter-Strike Global Offensive\game\csgo\cfg
 ```
 
-If the app cannot find CS2 automatically, select the CS2 `cfg` folder when prompted.
+After this, restart CS2 once.
 
-Restart CS2 after the config file is installed.
+## Tray menu
 
-## Usage
+Right-click the tray icon:
 
-Keep CS2RoundAlert running in the tray.
-
-When CS2 sends a GSI payload where `round.phase` enters `freezetime`, the app checks the foreground window:
-
-- if CS2 is focused, no sound plays
-- if another app is focused, the alert sound plays
-
-Tray menu:
-
-- `Enable alerts`: toggle alerts
-- `Open settings folder`: open `%AppData%\CS2RoundAlert`
-- `Open GitHub repo`: open this repository
+- `Enable alerts`: turn alerts on or off
+- `Open settings folder`: open app settings
+- `Open GitHub repo`: open this page
 - `Quit`: exit the app
+
+## Is this safe for CS2?
+
+CS2RoundAlert only uses Valve's official Game State Integration feature.
+
+It does not:
+
+- read game memory
+- inject code
+- simulate mouse or keyboard input
+- automate gameplay
+
+It only receives round-state JSON from CS2 on your own computer.
+
+Valve GSI documentation:
+
+<https://developer.valvesoftware.com/wiki/Counter-Strike:_Global_Offensive_Game_State_Integration>
+
+## Common problems
+
+### No sound
+
+Try this:
+
+1. Make sure CS2RoundAlert is still running in the tray.
+2. Right-click the tray icon and make sure alerts are enabled.
+3. Restart CS2.
+
+### Windows warning
+
+The app is not code-signed, so Windows SmartScreen may show a warning. The source code and build workflow are public in this repository.
 
 ## Settings
 
-Settings are stored at:
+Settings are stored here:
 
 ```text
 %AppData%\CS2RoundAlert\settings.json
 ```
 
-Default settings:
+Most users do not need to edit this file.
 
-```json
-{
-  "port": 3000,
-  "enabled": true,
-  "alertOnlyWhenNotFocused": true,
-  "useSystemSound": true,
-  "customWavPath": null,
-  "cs2CfgFolderPath": null,
-  "firstRunNotificationShown": false
-}
-```
+## For developers
 
-To use a custom `.wav` file:
-
-```json
-{
-  "useSystemSound": false,
-  "customWavPath": "C:\\Path\\To\\alert.wav"
-}
-```
-
-Restart CS2RoundAlert after editing settings. If you change the port, restart CS2 after the app rewrites the GSI config.
-
-## Build from source
-
-Requirements:
-
-- Windows
-- .NET 8 SDK
-
-Run:
+Build with .NET 8:
 
 ```powershell
-dotnet publish src/CS2RoundAlert/CS2RoundAlert.csproj `
-  -c Release `
-  -r win-x64 `
-  --self-contained `
-  -p:PublishSingleFile=true `
-  -p:EnableCompressionInSingleFile=true `
-  -o publish
+dotnet publish src/CS2RoundAlert/CS2RoundAlert.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
 ```
-
-The output is:
-
-```text
-publish\CS2RoundAlert.exe
-```
-
-## Release workflow
-
-GitHub Actions builds a self-contained single-file Windows executable on tag push.
-
-Example:
-
-```powershell
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow creates a GitHub Release and attaches `CS2RoundAlert.exe`.
-
-## Screenshots
-
-Screenshots will be added after the first packaged release.
-
-- Tray menu
-- First-run notification
-- Settings folder
 
 ## License
 
