@@ -28,11 +28,18 @@ jobs:
           -r win-x64
           --self-contained
           -p:PublishSingleFile=true
-          -p:EnableCompressionInSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash publish/CS2RoundAlert.exe -Algorithm SHA256
+          "$($hash.Hash)  CS2RoundAlert.exe" | Set-Content publish/CS2RoundAlert.exe.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/CS2RoundAlert.exe
+          files: |
+            publish/CS2RoundAlert.exe
+            publish/CS2RoundAlert.exe.sha256

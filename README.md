@@ -2,9 +2,9 @@
 
 [中文说明](README.zh-CN.md)
 
-A small Windows tray app for Counter-Strike 2.
+A small Windows tray app for Counter-Strike 2. It reminds you when a new round starts after you tab out.
 
-When a new round starts and you are tabbed out, CS2RoundAlert plays a sound so you know to switch back.
+It does not control the game. It only receives official CS2 GSI data on your own computer.
 
 ## Download
 
@@ -81,7 +81,16 @@ Try this:
 
 ### Windows warning
 
-The app is not code-signed, so Windows SmartScreen may show a warning. The source code and build workflow are public in this repository.
+The app is not code-signed, so Windows SmartScreen or antivirus software may show a warning.
+
+To make the release easier to check:
+
+- the source code is public
+- the exe is built by GitHub Actions
+- the release includes a SHA256 checksum
+- the app is not packed, obfuscated, or compressed
+
+If your antivirus deletes it, do not disable your antivirus blindly. Check the source, the release workflow, and the checksum first.
 
 ## Settings
 

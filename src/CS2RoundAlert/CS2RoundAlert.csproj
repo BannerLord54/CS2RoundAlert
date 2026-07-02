@@ -7,6 +7,6 @@
     <Nullable>enable</Nullable>
     <AssemblyName>CS2RoundAlert</AssemblyName>
     <RootNamespace>CS2RoundAlert</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
   </PropertyGroup>
 </Project>

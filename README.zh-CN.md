@@ -2,9 +2,9 @@
 
 [English README](README.md)
 
-一个给 Counter-Strike 2 用的 Windows 托盘小工具。
+一个给 Counter-Strike 2 用的 Windows 托盘小工具。你切出去后，它会在新回合开始时提醒你。
 
-当新回合开始，而你切到了其他窗口时，它会播放提示音，提醒你切回游戏。
+它不会控制游戏，只是在你的电脑上接收 CS2 官方 GSI 数据。
 
 ## 下载
 
@@ -81,7 +81,16 @@ Valve GSI 文档：
 
 ### Windows 提示风险
 
-因为这个 exe 没有代码签名，Windows SmartScreen 可能会弹警告。项目源码和构建流程都在这个仓库里公开。
+因为这个 exe 没有代码签名，Windows SmartScreen 或杀毒软件可能会弹警告。
+
+为了方便检查：
+
+- 源码公开
+- exe 由 GitHub Actions 构建
+- Release 附带 SHA256 校验文件
+- 程序没有加壳、混淆或压缩
+
+如果杀毒软件删除了它，不建议直接关闭杀毒软件。先检查源码、Release 构建流程和 SHA256。
 
 ## 设置
 
