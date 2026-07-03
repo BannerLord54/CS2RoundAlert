@@ -42,6 +42,7 @@ constexpr UINT ID_LANG_EN = 205;
 constexpr UINT ID_LANG_ZH = 206;
 constexpr UINT ID_QUIT = 207;
 constexpr UINT ID_ROUND_END_ALERT = 208;
+constexpr UINT ID_REST_REMINDER = 209;
 constexpr UINT ID_STATUS = 300;
 constexpr UINT ID_GUI_ENABLE = 301;
 constexpr UINT ID_HIDE = 302;
@@ -51,6 +52,7 @@ constexpr UINT ID_LAST_ACTION = 305;
 constexpr UINT ID_GUI_ROUND_END = 306;
 constexpr UINT ID_INFO = 307;
 constexpr UINT ID_LANGUAGE_LABEL = 308;
+constexpr UINT ID_GUI_REST_REMINDER = 309;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t WindowClassName[] = L"CS2RoundAlertWindow";
@@ -64,6 +66,7 @@ struct Settings
     int port = 3000;
     bool enabled = true;
     bool alertOnRoundEnd = false;
+    bool restReminderOnMatchEnd = false;
     bool alertOnlyWhenNotFocused = true;
     bool useSystemSound = true;
     std::wstring customWavPath;
@@ -330,6 +333,7 @@ Settings LoadSettings()
     settings.port = ReadInt(json, "port", settings.port);
     settings.enabled = ReadBool(json, "enabled", settings.enabled);
     settings.alertOnRoundEnd = ReadBool(json, "alertOnRoundEnd", settings.alertOnRoundEnd);
+    settings.restReminderOnMatchEnd = ReadBool(json, "restReminderOnMatchEnd", settings.restReminderOnMatchEnd);
     settings.alertOnlyWhenNotFocused = ReadBool(json, "alertOnlyWhenNotFocused", settings.alertOnlyWhenNotFocused);
     settings.useSystemSound = ReadBool(json, "useSystemSound", settings.useSystemSound);
     settings.customWavPath = ReadString(json, "customWavPath", settings.customWavPath);
@@ -352,6 +356,7 @@ void SaveSettings(const Settings& settings)
     json << "  \"port\": " << settings.port << ",\n";
     json << "  \"enabled\": " << (settings.enabled ? "true" : "false") << ",\n";
     json << "  \"alertOnRoundEnd\": " << (settings.alertOnRoundEnd ? "true" : "false") << ",\n";
+    json << "  \"restReminderOnMatchEnd\": " << (settings.restReminderOnMatchEnd ? "true" : "false") << ",\n";
     json << "  \"alertOnlyWhenNotFocused\": " << (settings.alertOnlyWhenNotFocused ? "true" : "false") << ",\n";
     json << "  \"useSystemSound\": " << (settings.useSystemSound ? "true" : "false") << ",\n";
     json << "  \"customWavPath\": \"" << EscapeJson(settings.customWavPath) << "\",\n";
@@ -413,6 +418,9 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"Info") return zh ? L"\u9ed8\u8ba4\uff1a\u5207\u51fa CS2 \u540e\uff0c\u65b0\u56de\u5408\u5f00\u59cb\u624d\u54cd\u3002\r\n\u52fe\u9009\u4e0b\u65b9\u9009\u9879\uff1a\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u4f1a\u54cd\u3002\r\n\u7eff\u8272\u8f6f\u4ef6\uff0c\u65e0\u9700\u5b89\u88c5\u3002\u6709\u95ee\u9898\u6216\u5efa\u8bae\u8bf7\u5230 GitHub \u63d0\u51fa\u3002" : L"Default: new-round alert only plays after you tab out of CS2.\r\nOptional: round-end alert can also play while you are in CS2.\r\nPortable app, no installation needed. Report issues or suggestions on GitHub.";
     if (key == L"AlertOnRoundEnd") return zh ? L"\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u54cd" : L"Also play when a round ends in game";
     if (key == L"RoundEndAlertPlayed") return zh ? L"\u5df2\u64ad\u653e\u56de\u5408\u7ed3\u675f\u63d0\u793a\u97f3" : L"Round-end alert played";
+    if (key == L"RestReminderOnMatchEnd") return zh ? L"\u6574\u5c40\u7ed3\u675f\u540e\u63d0\u9192\u4f11\u606f" : L"Remind me to rest when the match ends";
+    if (key == L"RestReminderMessage") return zh ? L"\u4e00\u6574\u628a\u7ed3\u675f\u4e86\uff0c\u4f11\u606f\u4e00\u4e0b\u518d\u5f00\u4e0b\u4e00\u628a\u3002" : L"Match finished. Take a short break before the next one.";
+    if (key == L"RestReminderShown") return zh ? L"\u5df2\u663e\u793a\u4f11\u606f\u63d0\u9192" : L"Rest reminder shown";
 
     return key;
 }
@@ -817,15 +825,16 @@ size_t MatchingBrace(const std::string& text, size_t open)
     return std::string::npos;
 }
 
-std::string ExtractRoundPhase(const std::string& body)
+std::string ExtractObjectPhase(const std::string& body, const std::string& objectName)
 {
-    const size_t round = body.find("\"round\"");
-    if (round == std::string::npos)
+    const std::string key = "\"" + objectName + "\"";
+    const size_t objectStart = body.find(key);
+    if (objectStart == std::string::npos)
     {
         return {};
     }
 
-    const size_t open = body.find('{', round);
+    const size_t open = body.find('{', objectStart);
     if (open == std::string::npos)
     {
         return {};
@@ -837,15 +846,25 @@ std::string ExtractRoundPhase(const std::string& body)
         return {};
     }
 
-    const std::string roundObject = body.substr(open, close - open + 1);
+    const std::string object = body.substr(open, close - open + 1);
     const std::regex phasePattern("\"phase\"\\s*:\\s*\"([^\"]+)\"", std::regex_constants::icase);
     std::smatch match;
-    if (std::regex_search(roundObject, match, phasePattern))
+    if (std::regex_search(object, match, phasePattern))
     {
         return match[1].str();
     }
 
     return {};
+}
+
+std::string ExtractRoundPhase(const std::string& body)
+{
+    return ExtractObjectPhase(body, "round");
+}
+
+std::string ExtractMapPhase(const std::string& body)
+{
+    return ExtractObjectPhase(body, "map");
 }
 
 int ContentLength(const std::string& request)
@@ -885,7 +904,7 @@ public:
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             460,
-            480,
+            510,
             nullptr,
             nullptr,
             instance,
@@ -930,6 +949,7 @@ private:
     HWND _statusLabel{};
     HWND _enableCheck{};
     HWND _roundEndCheck{};
+    HWND _restReminderCheck{};
     HWND _gsiLabel{};
     HWND _lastActionLabel{};
     HWND _languageLabel{};
@@ -949,6 +969,7 @@ private:
     std::atomic<bool> _running = false;
     SOCKET _listenSocket = INVALID_SOCKET;
     std::string _lastPhase;
+    std::string _lastMapPhase;
     std::wstring _gsiStatusText;
     std::wstring _lastActionText;
 
@@ -1069,13 +1090,27 @@ private:
             _instance,
             nullptr);
 
+        _restReminderCheck = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"RestReminderOnMatchEnd").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            24,
+            178,
+            412,
+            26,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_GUI_REST_REMINDER),
+            _instance,
+            nullptr);
+
         _gsiLabel = CreateWindowExW(
             0,
             L"STATIC",
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            188,
+            216,
             412,
             22,
             _hwnd,
@@ -1089,7 +1124,7 @@ private:
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            214,
+            242,
             412,
             22,
             _hwnd,
@@ -1103,7 +1138,7 @@ private:
             Text(_settings, L"Language").c_str(),
             WS_CHILD | WS_VISIBLE,
             24,
-            248,
+            276,
             76,
             22,
             _hwnd,
@@ -1117,7 +1152,7 @@ private:
             Text(_settings, L"LanguageAuto").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON | WS_GROUP,
             104,
-            244,
+            272,
             122,
             26,
             _hwnd,
@@ -1131,7 +1166,7 @@ private:
             Text(_settings, L"LanguageEnglish").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
             232,
-            244,
+            272,
             82,
             26,
             _hwnd,
@@ -1145,7 +1180,7 @@ private:
             Text(_settings, L"LanguageChinese").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
             320,
-            244,
+            272,
             86,
             26,
             _hwnd,
@@ -1159,7 +1194,7 @@ private:
             Text(_settings, L"TestSound").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            288,
+            316,
             190,
             30,
             _hwnd,
@@ -1173,7 +1208,7 @@ private:
             Text(_settings, L"ChooseCfgFolder").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             246,
-            288,
+            316,
             190,
             30,
             _hwnd,
@@ -1187,7 +1222,7 @@ private:
             Text(_settings, L"OpenGitHubRepo").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            332,
+            360,
             190,
             30,
             _hwnd,
@@ -1201,7 +1236,7 @@ private:
             Text(_settings, L"HideToTray").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             246,
-            332,
+            360,
             190,
             30,
             _hwnd,
@@ -1215,7 +1250,7 @@ private:
             Text(_settings, L"Quit").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            376,
+            404,
             412,
             30,
             _hwnd,
@@ -1248,6 +1283,12 @@ private:
         {
             SetWindowTextW(_roundEndCheck, Text(_settings, L"AlertOnRoundEnd").c_str());
             SendMessageW(_roundEndCheck, BM_SETCHECK, _settings.alertOnRoundEnd ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
+
+        if (_restReminderCheck)
+        {
+            SetWindowTextW(_restReminderCheck, Text(_settings, L"RestReminderOnMatchEnd").c_str());
+            SendMessageW(_restReminderCheck, BM_SETCHECK, _settings.restReminderOnMatchEnd ? BST_CHECKED : BST_UNCHECKED, 0);
         }
 
         RefreshStatusLabels();
@@ -1402,6 +1443,7 @@ private:
         const bool enabled = _settings.enabled;
         AppendMenuW(menu, MF_STRING | (enabled ? MF_CHECKED : 0), ID_ENABLE, Text(_settings, L"EnableAlerts").c_str());
         AppendMenuW(menu, MF_STRING | (_settings.alertOnRoundEnd ? MF_CHECKED : 0), ID_ROUND_END_ALERT, Text(_settings, L"AlertOnRoundEnd").c_str());
+        AppendMenuW(menu, MF_STRING | (_settings.restReminderOnMatchEnd ? MF_CHECKED : 0), ID_REST_REMINDER, Text(_settings, L"RestReminderOnMatchEnd").c_str());
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, ID_TEST_SOUND, Text(_settings, L"TestSound").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_SETTINGS, Text(_settings, L"OpenSettingsFolder").c_str());
@@ -1450,6 +1492,22 @@ private:
         if (command == ID_GUI_ROUND_END)
         {
             _settings.alertOnRoundEnd = SendMessageW(_roundEndCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            SaveSettings(_settings);
+            RefreshMainControls();
+            return;
+        }
+
+        if (command == ID_REST_REMINDER)
+        {
+            _settings.restReminderOnMatchEnd = !_settings.restReminderOnMatchEnd;
+            SaveSettings(_settings);
+            RefreshMainControls();
+            return;
+        }
+
+        if (command == ID_GUI_REST_REMINDER)
+        {
+            _settings.restReminderOnMatchEnd = SendMessageW(_restReminderCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
             SaveSettings(_settings);
             RefreshMainControls();
             return;
@@ -1626,28 +1684,43 @@ private:
 
     void ProcessPayload(const std::string& body)
     {
-        const std::string phase = ExtractRoundPhase(body);
-        if (phase.empty())
+        const std::string roundPhase = ExtractRoundPhase(body);
+        const std::string mapPhase = ExtractMapPhase(body);
+        if (roundPhase.empty() && mapPhase.empty())
         {
             SetGsiStatus(Text(_settings, L"GsiNoRound"));
             return;
         }
 
-        SetGsiStatus(Text(_settings, L"GsiPhase") + Utf8ToWide(phase));
-        const bool enteredFreezetime = _stricmp(phase.c_str(), "freezetime") == 0 && _stricmp(_lastPhase.c_str(), "freezetime") != 0;
-        const bool enteredRoundOver = _settings.alertOnRoundEnd && _stricmp(phase.c_str(), "over") == 0 && _stricmp(_lastPhase.c_str(), "over") != 0;
-        _lastPhase = phase;
-
-        if (enteredFreezetime)
+        if (!roundPhase.empty())
         {
-            Alert(false, Text(_settings, L"AlertPlayed"));
-            return;
+            SetGsiStatus(Text(_settings, L"GsiPhase") + Utf8ToWide(roundPhase));
+            const bool enteredFreezetime = _stricmp(roundPhase.c_str(), "freezetime") == 0 && _stricmp(_lastPhase.c_str(), "freezetime") != 0;
+            const bool enteredRoundOver = _settings.alertOnRoundEnd && _stricmp(roundPhase.c_str(), "over") == 0 && _stricmp(_lastPhase.c_str(), "over") != 0;
+            _lastPhase = roundPhase;
+
+            if (enteredFreezetime)
+            {
+                Alert(false, Text(_settings, L"AlertPlayed"));
+                return;
+            }
+
+            if (enteredRoundOver)
+            {
+                Alert(true, Text(_settings, L"RoundEndAlertPlayed"));
+            }
         }
 
-        if (enteredRoundOver)
+        if (!mapPhase.empty())
         {
-            Alert(true, Text(_settings, L"RoundEndAlertPlayed"));
-            return;
+            const bool enteredGameOver = _settings.restReminderOnMatchEnd && _stricmp(mapPhase.c_str(), "gameover") == 0 && _stricmp(_lastMapPhase.c_str(), "gameover") != 0;
+            _lastMapPhase = mapPhase;
+
+            if (enteredGameOver)
+            {
+                ShowRestReminder();
+                return;
+            }
         }
 
         SetLastAction(Text(_settings, L"WaitingFreezetime"), false);
@@ -1683,6 +1756,18 @@ private:
 
         PlayAlertSound();
         SetLastAction(playedMessage);
+    }
+
+    void ShowRestReminder()
+    {
+        if (!_settings.enabled)
+        {
+            SetLastAction(Text(_settings, L"AlertSkippedDisabled"));
+            return;
+        }
+
+        ShowBalloon(Text(_settings, L"RestReminderMessage"), NIIF_INFO);
+        SetLastAction(Text(_settings, L"RestReminderShown"));
     }
 };
 

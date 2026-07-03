@@ -12,6 +12,8 @@ When you tab out of CS2, it plays a sound when the next round starts.
 
 Download `CS2RoundAlert.exe`, run it, restart CS2, and keep it open.
 
+Optional: enable the rest reminder if you want a notification when a full match ends.
+
 Download:
 https://github.com/BannerLord54/CS2RoundAlert/releases/latest
 

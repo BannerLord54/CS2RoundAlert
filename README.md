@@ -28,6 +28,7 @@ Done.
 Optional:
 
 - Enable `Also play when a round ends in game` if you want a sound at round end too.
+- Enable `Remind me to rest when the match ends` if you want a break reminder after a full match.
 - Close the window to hide it to the tray.
 - Open the exe again to show the existing window.
 
