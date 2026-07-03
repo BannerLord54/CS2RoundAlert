@@ -53,6 +53,8 @@ constexpr UINT ID_INFO = 307;
 constexpr UINT ID_LANGUAGE_LABEL = 308;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
+constexpr wchar_t WindowClassName[] = L"CS2RoundAlertWindow";
+constexpr wchar_t SingleInstanceMutexName[] = L"Local\\CS2RoundAlertSingleInstance";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
 constexpr wchar_t ConfigFileName[] = L"gamestate_integration_cs2roundalert.cfg";
 constexpr wchar_t Cs2FolderName[] = L"Counter-Strike Global Offensive";
@@ -408,7 +410,7 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"AlertSkippedForeground") return zh ? L"\u672a\u64ad\u653e\uff1aCS2 \u6b63\u5728\u524d\u53f0" : L"Skipped: CS2 is foreground";
     if (key == L"TestSound") return zh ? L"\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound";
     if (key == L"TestSoundPlayed") return zh ? L"\u5df2\u64ad\u653e\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound played";
-    if (key == L"Info") return zh ? L"\u9ed8\u8ba4\uff1a\u5207\u51fa CS2 \u540e\uff0c\u65b0\u56de\u5408\u5f00\u59cb\u624d\u54cd\u3002\r\n\u52fe\u9009\u4e0b\u65b9\u9009\u9879\uff1a\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u4f1a\u54cd\u3002" : L"Default: new-round alert only plays after you tab out of CS2.\r\nOptional: round-end alert can also play while you are in CS2.";
+    if (key == L"Info") return zh ? L"\u9ed8\u8ba4\uff1a\u5207\u51fa CS2 \u540e\uff0c\u65b0\u56de\u5408\u5f00\u59cb\u624d\u54cd\u3002\r\n\u52fe\u9009\u4e0b\u65b9\u9009\u9879\uff1a\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u4f1a\u54cd\u3002\r\n\u7eff\u8272\u8f6f\u4ef6\uff0c\u65e0\u9700\u5b89\u88c5\u3002\u6709\u95ee\u9898\u6216\u5efa\u8bae\u8bf7\u5230 GitHub \u63d0\u51fa\u3002" : L"Default: new-round alert only plays after you tab out of CS2.\r\nOptional: round-end alert can also play while you are in CS2.\r\nPortable app, no installation needed. Report issues or suggestions on GitHub.";
     if (key == L"AlertOnRoundEnd") return zh ? L"\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u54cd" : L"Also play when a round ends in game";
     if (key == L"RoundEndAlertPlayed") return zh ? L"\u5df2\u64ad\u653e\u56de\u5408\u7ed3\u675f\u63d0\u793a\u97f3" : L"Round-end alert played";
 
@@ -866,25 +868,24 @@ public:
         _instance = instance;
         _settings = LoadSettings();
 
-        const wchar_t className[] = L"CS2RoundAlertWindow";
         WNDCLASSW wc{};
         wc.lpfnWndProc = WindowProc;
         wc.hInstance = instance;
         wc.hIcon = LoadIconW(nullptr, IDI_INFORMATION);
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-        wc.lpszClassName = className;
+        wc.lpszClassName = WindowClassName;
         RegisterClassW(&wc);
 
         _hwnd = CreateWindowExW(
             0,
-            className,
+            WindowClassName,
             AppName,
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             460,
-            450,
+            480,
             nullptr,
             nullptr,
             instance,
@@ -1020,7 +1021,7 @@ private:
             24,
             16,
             412,
-            44,
+            66,
             _hwnd,
             reinterpret_cast<HMENU>(ID_INFO),
             _instance,
@@ -1032,7 +1033,7 @@ private:
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            70,
+            94,
             412,
             24,
             _hwnd,
@@ -1046,7 +1047,7 @@ private:
             Text(_settings, L"EnableAlerts").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             24,
-            98,
+            122,
             412,
             26,
             _hwnd,
@@ -1060,7 +1061,7 @@ private:
             Text(_settings, L"AlertOnRoundEnd").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             24,
-            126,
+            150,
             412,
             26,
             _hwnd,
@@ -1074,7 +1075,7 @@ private:
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            164,
+            188,
             412,
             22,
             _hwnd,
@@ -1088,7 +1089,7 @@ private:
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            190,
+            214,
             412,
             22,
             _hwnd,
@@ -1102,7 +1103,7 @@ private:
             Text(_settings, L"Language").c_str(),
             WS_CHILD | WS_VISIBLE,
             24,
-            224,
+            248,
             76,
             22,
             _hwnd,
@@ -1116,7 +1117,7 @@ private:
             Text(_settings, L"LanguageAuto").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON | WS_GROUP,
             104,
-            220,
+            244,
             122,
             26,
             _hwnd,
@@ -1130,7 +1131,7 @@ private:
             Text(_settings, L"LanguageEnglish").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
             232,
-            220,
+            244,
             82,
             26,
             _hwnd,
@@ -1144,7 +1145,7 @@ private:
             Text(_settings, L"LanguageChinese").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
             320,
-            220,
+            244,
             86,
             26,
             _hwnd,
@@ -1158,7 +1159,7 @@ private:
             Text(_settings, L"TestSound").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            264,
+            288,
             190,
             30,
             _hwnd,
@@ -1172,7 +1173,7 @@ private:
             Text(_settings, L"ChooseCfgFolder").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             246,
-            264,
+            288,
             190,
             30,
             _hwnd,
@@ -1186,7 +1187,7 @@ private:
             Text(_settings, L"OpenGitHubRepo").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            308,
+            332,
             190,
             30,
             _hwnd,
@@ -1200,7 +1201,7 @@ private:
             Text(_settings, L"HideToTray").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             246,
-            308,
+            332,
             190,
             30,
             _hwnd,
@@ -1214,7 +1215,7 @@ private:
             Text(_settings, L"Quit").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            352,
+            376,
             412,
             30,
             _hwnd,
@@ -1687,9 +1688,28 @@ private:
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
+    HANDLE singleInstance = CreateMutexW(nullptr, TRUE, SingleInstanceMutexName);
+    if (singleInstance && GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        HWND existing = FindWindowW(WindowClassName, AppName);
+        if (existing)
+        {
+            ShowWindow(existing, SW_SHOWNORMAL);
+            SetForegroundWindow(existing);
+        }
+
+        CloseHandle(singleInstance);
+        return 0;
+    }
+
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     App app;
     const int result = app.Run(instance);
     CoUninitialize();
+    if (singleInstance)
+    {
+        ReleaseMutex(singleInstance);
+        CloseHandle(singleInstance);
+    }
     return result;
 }

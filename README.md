@@ -6,6 +6,8 @@ A small Windows tray app for Counter-Strike 2. It reminds you when a new round s
 
 It does not control the game. It only receives official CS2 GSI data on your own computer.
 
+Portable app: no installation is required. Report issues or suggestions on GitHub.
+
 ## Download
 
 Download `CS2RoundAlert.exe` here:
@@ -23,6 +25,8 @@ Download the `.exe` file, not `Source code`.
 5. Optional: enable `Also alert when a round ends`.
 6. Start or restart CS2.
 7. Keep CS2RoundAlert running in the system tray.
+
+Only one instance runs at a time. Opening the exe again brings the existing window forward.
 
 That is all.
 
