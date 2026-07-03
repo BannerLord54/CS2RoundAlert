@@ -34,10 +34,11 @@ constexpr UINT ID_TRAY = 100;
 constexpr UINT ID_ENABLE = 200;
 constexpr UINT ID_OPEN_SETTINGS = 201;
 constexpr UINT ID_OPEN_GITHUB = 202;
-constexpr UINT ID_LANG_AUTO = 203;
-constexpr UINT ID_LANG_EN = 204;
-constexpr UINT ID_LANG_ZH = 205;
-constexpr UINT ID_QUIT = 206;
+constexpr UINT ID_CHOOSE_CFG = 203;
+constexpr UINT ID_LANG_AUTO = 204;
+constexpr UINT ID_LANG_EN = 205;
+constexpr UINT ID_LANG_ZH = 206;
+constexpr UINT ID_QUIT = 207;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
@@ -265,6 +266,7 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"EnableAlerts") return zh ? L"开启提示音" : L"Enable alerts";
     if (key == L"OpenSettingsFolder") return zh ? L"打开设置文件夹" : L"Open settings folder";
     if (key == L"OpenGitHubRepo") return zh ? L"打开 GitHub 仓库" : L"Open GitHub repo";
+    if (key == L"ChooseCfgFolder") return zh ? L"选择 CS2 cfg 文件夹" : L"Choose CS2 cfg folder";
     if (key == L"Language") return zh ? L"语言" : L"Language";
     if (key == L"LanguageAuto") return zh ? L"自动（跟随系统）" : L"Auto (system)";
     if (key == L"LanguageEnglish") return L"English";
@@ -373,6 +375,7 @@ std::wstring PickCfgDirectory(HWND owner, const Settings& settings)
     dialog->SetTitle(Text(settings, L"SelectCfgDescription").c_str());
 
     std::wstring result;
+    std::wstring selectedPath;
     if (SUCCEEDED(dialog->Show(owner)))
     {
         IShellItem* item = nullptr;
@@ -381,7 +384,8 @@ std::wstring PickCfgDirectory(HWND owner, const Settings& settings)
             PWSTR path = nullptr;
             if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
             {
-                result = ResolveCfgDirectory(path);
+                selectedPath = path;
+                result = ResolveCfgDirectory(selectedPath);
                 CoTaskMemFree(path);
             }
             item->Release();
@@ -389,6 +393,12 @@ std::wstring PickCfgDirectory(HWND owner, const Settings& settings)
     }
 
     dialog->Release();
+
+    if (!selectedPath.empty() && result.empty())
+    {
+        MessageBoxW(owner, Text(settings, L"InvalidCfgFolder").c_str(), AppName, MB_OK | MB_ICONWARNING);
+    }
+
     return result;
 }
 
@@ -411,19 +421,8 @@ std::string BuildGsiConfig(int port)
     return config.str();
 }
 
-std::wstring EnsureGsiConfig(HWND owner, Settings& settings)
+std::wstring WriteGsiConfig(const std::wstring& cfg, Settings& settings)
 {
-    std::wstring cfg = FindCs2CfgDirectory(settings);
-    if (cfg.empty())
-    {
-        cfg = PickCfgDirectory(owner, settings);
-    }
-
-    if (cfg.empty())
-    {
-        return Text(settings, L"GsiConfigNotInstalled");
-    }
-
     try
     {
         const fs::path configPath = fs::path(cfg) / ConfigFileName;
@@ -435,6 +434,19 @@ std::wstring EnsureGsiConfig(HWND owner, Settings& settings)
     {
         return Text(settings, L"GsiConfigWriteFailed");
     }
+}
+
+std::wstring EnsureGsiConfig(HWND owner, Settings& settings)
+{
+    (void)owner;
+
+    std::wstring cfg = FindCs2CfgDirectory(settings);
+    if (cfg.empty())
+    {
+        return Text(settings, L"GsiConfigNotInstalled");
+    }
+
+    return WriteGsiConfig(cfg, settings);
 }
 
 bool IsCs2Foreground()
@@ -631,13 +643,13 @@ private:
 
         if (app)
         {
-            return app->HandleMessage(message, wParam, lParam);
+            return app->HandleMessage(hwnd, message, wParam, lParam);
         }
 
         return DefWindowProcW(hwnd, message, wParam, lParam);
     }
 
-    LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
+    LRESULT HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
         if (message == WM_TRAYICON && LOWORD(lParam) == WM_RBUTTONUP)
         {
@@ -657,7 +669,7 @@ private:
             return 0;
         }
 
-        return DefWindowProcW(_hwnd, message, wParam, lParam);
+        return DefWindowProcW(hwnd, message, wParam, lParam);
     }
 
     void AddTrayIcon()
@@ -701,6 +713,7 @@ private:
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, ID_OPEN_SETTINGS, Text(_settings, L"OpenSettingsFolder").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_GITHUB, Text(_settings, L"OpenGitHubRepo").c_str());
+        AppendMenuW(menu, MF_STRING, ID_CHOOSE_CFG, Text(_settings, L"ChooseCfgFolder").c_str());
 
         AppendMenuW(language, MF_STRING | (_settings.language == L"auto" ? MF_CHECKED : 0), ID_LANG_AUTO, Text(_settings, L"LanguageAuto").c_str());
         AppendMenuW(language, MF_STRING | (_settings.language == L"en" ? MF_CHECKED : 0), ID_LANG_EN, Text(_settings, L"LanguageEnglish").c_str());
@@ -734,6 +747,18 @@ private:
         if (command == ID_OPEN_GITHUB)
         {
             ShellExecuteW(nullptr, L"open", RepositoryUrl, nullptr, nullptr, SW_SHOWNORMAL);
+            return;
+        }
+
+        if (command == ID_CHOOSE_CFG)
+        {
+            const std::wstring cfg = PickCfgDirectory(_hwnd, _settings);
+            if (!cfg.empty())
+            {
+                const std::wstring message = WriteGsiConfig(cfg, _settings);
+                SaveSettings(_settings);
+                ShowBalloon(message, NIIF_INFO);
+            }
             return;
         }
 
