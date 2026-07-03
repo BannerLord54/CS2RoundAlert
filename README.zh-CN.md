@@ -2,117 +2,95 @@
 
 [English README](README.md)
 
-一个给 Counter-Strike 2 用的 Windows 托盘小工具。你切出去后，它会在新回合开始时提醒你。
+一个给 Counter-Strike 2 用的 Windows 小工具。
 
-它不会控制游戏，只是在你的电脑上接收 CS2 官方 GSI 数据。
+你切到别的软件时，新回合开始会播放提示音。
+
+它不控制游戏，只接收 CS2 官方 GSI 数据。
 
 ## 下载
 
-在这里下载 `CS2RoundAlert.exe`：
+下载这里的 `CS2RoundAlert.exe`：
 
 <https://github.com/BannerLord54/CS2RoundAlert/releases/latest>
 
-下载 `.exe` 文件，不要下载 `Source code`。
+下载 `.exe`，不要下载 `Source code`。
 
-## 怎么使用
+## 使用方法
 
 1. 运行 `CS2RoundAlert.exe`。
-2. 如果 Windows 弹出警告，点 `更多信息` -> `仍要运行`。
-3. 程序会自动查找 CS2，并自动安装 GSI 配置。
-4. 在小窗口里开启或关闭提醒。
+2. 如果 Windows 提示风险，点 `更多信息` -> `仍要运行`。
+3. 程序会自动查找 CS2，并安装 GSI 配置。
+4. 点窗口里的 `测试提示音`，确认声音正常。
 5. 启动或重启 CS2。
-6. 让 CS2RoundAlert 保持在系统托盘里运行。
+6. 让 CS2RoundAlert 保持运行。
 
-就这样。
+新回合开始时：
 
-当下一回合开始时：
+- 如果 CS2 正在前台，不会响。
+- 如果你切到了别的窗口，会响。
 
-- 如果你已经在 CS2 里，不会响。
-- 如果你切到了别的窗口，会播放提示音。
+## 没有声音怎么办
 
-## 第一次运行
+按顺序检查：
 
-第一次运行时，程序会从 Steam 自动查找 CS2，并自动安装 GSI 配置文件。
-
-如果自动查找失败，右键托盘图标，选择 `选择 CS2 cfg 文件夹`：
-
-```text
-Counter-Strike Global Offensive\game\csgo\cfg
-```
-
-选好后，重启一次 CS2。
+1. 点 `测试提示音`。如果这个都没声音，检查 Windows 音量和系统声音。
+2. 确认窗口里 `开启提示音` 已勾选。
+3. 安装 GSI 配置后，重启一次 CS2。
+4. 测试时要切出 CS2。人在 CS2 窗口里时，程序会故意不响。
+5. 看窗口里的 GSI 状态。如果一直显示没收到 CS2 数据，说明 CS2 没读到 GSI 配置。
 
 ## 托盘菜单
 
 右键托盘图标：
 
-- `Enable alerts`：开启或关闭提示音。
-- `Open settings folder`：打开设置文件夹。
-- `Open GitHub repo`：打开项目页面。
-- `Choose CS2 cfg folder`：自动查找失败时，手动选择 CS2。
-- `Language`：选择自动、英文或中文。
-- `Quit`：退出程序。
+- `Enable alerts`：开启或关闭提示音
+- `Test sound`：测试提示音
+- `Open settings folder`：打开设置文件夹
+- `Open GitHub repo`：打开项目页面
+- `Choose CS2 cfg folder`：手动选择 CS2 配置文件夹
+- `Language`：切换语言
+- `Quit`：退出程序
 
-默认是自动跟随系统语言。
+关闭窗口只是隐藏到托盘。要退出请点 `Quit`。
 
-关闭窗口只是隐藏到托盘。要退出程序，请点 `Quit`。
+## 对 CS2 安全吗
 
-## 对 CS2 安全吗？
+安全设计如下：
 
-CS2RoundAlert 只使用 Valve 官方的 Game State Integration 功能。
-
-它不会：
-
-- 读取游戏内存
-- 注入代码
-- 模拟鼠标或键盘输入
-- 自动操作游戏
-
-它只是在你自己的电脑上接收 CS2 发来的回合状态 JSON。
+- 不读取游戏内存
+- 不注入代码
+- 不模拟鼠标键盘
+- 不自动操作游戏
+- 只接收 Valve 官方 GSI JSON
 
 Valve GSI 文档：
 
 <https://developer.valvesoftware.com/wiki/Counter-Strike:_Global_Offensive_Game_State_Integration>
 
-## 常见问题
+不确定第三方平台是否永远放行。完美平台、5E 等平台如果弹出拦截或警告，请停止使用。
 
-### 没有声音
+## Windows 风险提示
 
-按顺序检查：
-
-1. 确认 CS2RoundAlert 还在托盘里运行。
-2. 右键托盘图标，确认 alerts 已开启。
-3. 重启 CS2。
-
-### Windows 提示风险
-
-因为这个 exe 没有代码签名，Windows SmartScreen 或杀毒软件可能会弹警告。
+这个 exe 没有代码签名，所以 SmartScreen 或杀毒软件可能提示风险。
 
 为了方便检查：
 
 - 源码公开
 - exe 由 GitHub Actions 构建
-- Release 附带 SHA256 校验文件
-- 程序没有加壳、混淆或压缩
+- Release 附带 SHA256 校验
+- 没有加壳、混淆、压缩壳
 
-如果杀毒软件删除了它，不建议直接关闭杀毒软件。先检查源码、Release 构建流程和 SHA256。
-
-## 设置
-
-设置文件在这里：
+## 设置位置
 
 ```text
 %AppData%\CS2RoundAlert\settings.json
 ```
 
-大多数用户不需要改这个文件。
+日志位置：
 
-## 开发者
-
-使用 MSYS2 MinGW64 构建：
-
-```powershell
-C:\msys64\usr\bin\bash.exe -lc 'bash /d/Path/To/CS2RoundAlert/scripts/build-native-msys2.sh'
+```text
+%AppData%\CS2RoundAlert\CS2RoundAlert.log
 ```
 
 ## 许可证

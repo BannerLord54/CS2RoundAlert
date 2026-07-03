@@ -31,6 +31,7 @@
 namespace fs = std::filesystem;
 
 constexpr UINT WM_TRAYICON = WM_APP + 1;
+constexpr UINT WM_STATUS_UPDATE = WM_APP + 2;
 constexpr UINT ID_TRAY = 100;
 constexpr UINT ID_ENABLE = 200;
 constexpr UINT ID_OPEN_SETTINGS = 201;
@@ -43,6 +44,9 @@ constexpr UINT ID_QUIT = 207;
 constexpr UINT ID_STATUS = 300;
 constexpr UINT ID_GUI_ENABLE = 301;
 constexpr UINT ID_HIDE = 302;
+constexpr UINT ID_TEST_SOUND = 303;
+constexpr UINT ID_GSI_STATUS = 304;
+constexpr UINT ID_LAST_ACTION = 305;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
@@ -206,6 +210,33 @@ std::wstring SettingsPath()
     return (fs::path(AppDataDirectory()) / L"settings.json").wstring();
 }
 
+std::wstring LogPath()
+{
+    return (fs::path(AppDataDirectory()) / L"CS2RoundAlert.log").wstring();
+}
+
+void AppendLog(const std::wstring& message)
+{
+    fs::create_directories(AppDataDirectory());
+
+    SYSTEMTIME time{};
+    GetLocalTime(&time);
+
+    wchar_t prefix[64]{};
+    swprintf_s(
+        prefix,
+        L"%04u-%02u-%02u %02u:%02u:%02u ",
+        time.wYear,
+        time.wMonth,
+        time.wDay,
+        time.wHour,
+        time.wMinute,
+        time.wSecond);
+
+    std::ofstream file(fs::path(LogPath()), std::ios::binary | std::ios::app);
+    file << WideToUtf8(std::wstring(prefix) + message + L"\n");
+}
+
 std::string EscapeJson(const std::wstring& value)
 {
     std::string utf8 = WideToUtf8(value);
@@ -360,6 +391,16 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"GsiConfigInstalled") return zh ? L"GSI 配置已安装到：" : L"GSI config installed at:";
     if (key == L"GsiConfigWriteFailed") return zh ? L"无法写入 GSI 配置：" : L"Could not write the GSI config:";
     if (key == L"ListenFailed") return zh ? L"无法监听本地端口。" : L"Could not listen on the local port.";
+    if (key == L"Listening") return zh ? L"\u76d1\u542c\uff1a127.0.0.1:" : L"Listening: 127.0.0.1:";
+    if (key == L"NoGsiYet") return zh ? L"GSI\uff1a\u8fd8\u6ca1\u6536\u5230 CS2 \u6570\u636e" : L"GSI: no CS2 data received yet";
+    if (key == L"GsiNoRound") return zh ? L"GSI\uff1a\u5df2\u6536\u5230\u6570\u636e\uff0c\u4f46\u6ca1\u6709 round.phase" : L"GSI: received data, no round.phase";
+    if (key == L"GsiPhase") return zh ? L"GSI\uff1around.phase = " : L"GSI: round.phase = ";
+    if (key == L"WaitingFreezetime") return zh ? L"\u7b49\u5f85\u4e0b\u4e00\u6b21 freezetime" : L"Waiting for next freezetime";
+    if (key == L"AlertPlayed") return zh ? L"\u5df2\u64ad\u653e\u63d0\u793a\u97f3" : L"Alert played";
+    if (key == L"AlertSkippedDisabled") return zh ? L"\u672a\u64ad\u653e\uff1a\u63d0\u9192\u5df2\u5173\u95ed" : L"Skipped: alerts disabled";
+    if (key == L"AlertSkippedForeground") return zh ? L"\u672a\u64ad\u653e\uff1aCS2 \u6b63\u5728\u524d\u53f0" : L"Skipped: CS2 is foreground";
+    if (key == L"TestSound") return zh ? L"\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound";
+    if (key == L"TestSoundPlayed") return zh ? L"\u5df2\u64ad\u653e\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound played";
 
     return key;
 }
@@ -832,8 +873,8 @@ public:
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            380,
-            230,
+            400,
+            320,
             nullptr,
             nullptr,
             instance,
@@ -847,6 +888,8 @@ public:
         SaveSettings(_settings);
         AddTrayIcon();
         CreateMainControls();
+        SetGsiStatus(Text(_settings, L"NoGsiYet"), false);
+        SetLastAction(Text(_settings, L"Listening") + std::to_wstring(_settings.port), false);
         ShowMainWindow();
         StartServer();
 
@@ -874,17 +917,23 @@ private:
     HWND _hwnd{};
     HWND _statusLabel{};
     HWND _enableCheck{};
+    HWND _gsiLabel{};
+    HWND _lastActionLabel{};
     HWND _chooseButton{};
     HWND _githubButton{};
+    HWND _testButton{};
     HWND _hideButton{};
     HWND _quitButton{};
     NOTIFYICONDATAW _tray{};
     Settings _settings;
     std::mutex _settingsMutex;
+    std::mutex _statusMutex;
     std::thread _serverThread;
     std::atomic<bool> _running = false;
     SOCKET _listenSocket = INVALID_SOCKET;
     std::string _lastPhase;
+    std::wstring _gsiStatusText;
+    std::wstring _lastActionText;
 
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
@@ -918,6 +967,12 @@ private:
             return 0;
         }
 
+        if (message == WM_STATUS_UPDATE)
+        {
+            RefreshStatusLabels();
+            return 0;
+        }
+
         if (message == WM_CLOSE)
         {
             HideMainWindow();
@@ -947,8 +1002,8 @@ private:
             L"",
             WS_CHILD | WS_VISIBLE,
             24,
-            20,
-            320,
+            18,
+            340,
             24,
             _hwnd,
             reinterpret_cast<HMENU>(ID_STATUS),
@@ -961,11 +1016,53 @@ private:
             Text(_settings, L"EnableAlerts").c_str(),
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             24,
-            54,
-            300,
+            46,
+            340,
             26,
             _hwnd,
             reinterpret_cast<HMENU>(ID_GUI_ENABLE),
+            _instance,
+            nullptr);
+
+        _gsiLabel = CreateWindowExW(
+            0,
+            L"STATIC",
+            L"",
+            WS_CHILD | WS_VISIBLE,
+            24,
+            82,
+            340,
+            22,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_GSI_STATUS),
+            _instance,
+            nullptr);
+
+        _lastActionLabel = CreateWindowExW(
+            0,
+            L"STATIC",
+            L"",
+            WS_CHILD | WS_VISIBLE,
+            24,
+            108,
+            340,
+            22,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_LAST_ACTION),
+            _instance,
+            nullptr);
+
+        _testButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"TestSound").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            24,
+            148,
+            160,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_TEST_SOUND),
             _instance,
             nullptr);
 
@@ -974,9 +1071,9 @@ private:
             L"BUTTON",
             Text(_settings, L"ChooseCfgFolder").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            24,
-            92,
-            150,
+            202,
+            148,
+            160,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_CHOOSE_CFG),
@@ -988,9 +1085,9 @@ private:
             L"BUTTON",
             Text(_settings, L"OpenGitHubRepo").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            190,
-            92,
-            150,
+            24,
+            192,
+            160,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_OPEN_GITHUB),
@@ -1002,9 +1099,9 @@ private:
             L"BUTTON",
             Text(_settings, L"HideToTray").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            24,
-            136,
-            150,
+            202,
+            192,
+            160,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_HIDE),
@@ -1016,9 +1113,9 @@ private:
             L"BUTTON",
             Text(_settings, L"Quit").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            190,
-            136,
-            150,
+            24,
+            236,
+            338,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_QUIT),
@@ -1041,10 +1138,77 @@ private:
             SendMessageW(_enableCheck, BM_SETCHECK, _settings.enabled ? BST_CHECKED : BST_UNCHECKED, 0);
         }
 
+        RefreshStatusLabels();
         if (_chooseButton) SetWindowTextW(_chooseButton, Text(_settings, L"ChooseCfgFolder").c_str());
         if (_githubButton) SetWindowTextW(_githubButton, Text(_settings, L"OpenGitHubRepo").c_str());
+        if (_testButton) SetWindowTextW(_testButton, Text(_settings, L"TestSound").c_str());
         if (_hideButton) SetWindowTextW(_hideButton, Text(_settings, L"HideToTray").c_str());
         if (_quitButton) SetWindowTextW(_quitButton, Text(_settings, L"Quit").c_str());
+    }
+
+    void RefreshStatusLabels()
+    {
+        std::wstring gsiStatus;
+        std::wstring lastAction;
+        {
+            std::lock_guard<std::mutex> lock(_statusMutex);
+            gsiStatus = _gsiStatusText;
+            lastAction = _lastActionText;
+        }
+
+        if (_gsiLabel)
+        {
+            SetWindowTextW(_gsiLabel, gsiStatus.c_str());
+        }
+
+        if (_lastActionLabel)
+        {
+            SetWindowTextW(_lastActionLabel, lastAction.c_str());
+        }
+    }
+
+    void SetGsiStatus(const std::wstring& text, bool writeLog = true)
+    {
+        {
+            std::lock_guard<std::mutex> lock(_statusMutex);
+            if (_gsiStatusText == text)
+            {
+                return;
+            }
+            _gsiStatusText = text;
+        }
+
+        if (writeLog)
+        {
+            AppendLog(text);
+        }
+
+        if (_hwnd)
+        {
+            PostMessageW(_hwnd, WM_STATUS_UPDATE, 0, 0);
+        }
+    }
+
+    void SetLastAction(const std::wstring& text, bool writeLog = true)
+    {
+        {
+            std::lock_guard<std::mutex> lock(_statusMutex);
+            if (_lastActionText == text)
+            {
+                return;
+            }
+            _lastActionText = text;
+        }
+
+        if (writeLog)
+        {
+            AppendLog(text);
+        }
+
+        if (_hwnd)
+        {
+            PostMessageW(_hwnd, WM_STATUS_UPDATE, 0, 0);
+        }
     }
 
     void CenterMainWindow()
@@ -1110,6 +1274,7 @@ private:
         const bool enabled = _settings.enabled;
         AppendMenuW(menu, MF_STRING | (enabled ? MF_CHECKED : 0), ID_ENABLE, Text(_settings, L"EnableAlerts").c_str());
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, ID_TEST_SOUND, Text(_settings, L"TestSound").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_SETTINGS, Text(_settings, L"OpenSettingsFolder").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_GITHUB, Text(_settings, L"OpenGitHubRepo").c_str());
         AppendMenuW(menu, MF_STRING, ID_CHOOSE_CFG, Text(_settings, L"ChooseCfgFolder").c_str());
@@ -1171,6 +1336,13 @@ private:
             return;
         }
 
+        if (command == ID_TEST_SOUND)
+        {
+            PlayAlertSound();
+            SetLastAction(Text(_settings, L"TestSoundPlayed"));
+            return;
+        }
+
         if (command == ID_LANG_AUTO || command == ID_LANG_EN || command == ID_LANG_ZH)
         {
             if (command == ID_LANG_AUTO) _settings.language = L"auto";
@@ -1219,12 +1391,14 @@ private:
         WSADATA data{};
         if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
         {
+            SetLastAction(L"Listen failed: WSAStartup");
             return;
         }
 
         _listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (_listenSocket == INVALID_SOCKET)
         {
+            SetLastAction(L"Listen failed: socket");
             WSACleanup();
             return;
         }
@@ -1240,12 +1414,15 @@ private:
         if (bind(_listenSocket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ||
             listen(_listenSocket, SOMAXCONN) == SOCKET_ERROR)
         {
+            SetLastAction(Text(_settings, L"ListenFailed"));
             ShowBalloon(Text(_settings, L"ListenFailed"), NIIF_ERROR);
             closesocket(_listenSocket);
             _listenSocket = INVALID_SOCKET;
             WSACleanup();
             return;
         }
+
+        SetLastAction(Text(_settings, L"Listening") + std::to_wstring(_settings.port));
 
         while (_running)
         {
@@ -1307,15 +1484,34 @@ private:
         const std::string phase = ExtractRoundPhase(body);
         if (phase.empty())
         {
+            SetGsiStatus(Text(_settings, L"GsiNoRound"));
             return;
         }
 
+        SetGsiStatus(Text(_settings, L"GsiPhase") + Utf8ToWide(phase));
         const bool enteredFreezetime = _stricmp(phase.c_str(), "freezetime") == 0 && _stricmp(_lastPhase.c_str(), "freezetime") != 0;
         _lastPhase = phase;
 
         if (enteredFreezetime)
         {
             Alert();
+            return;
+        }
+
+        SetLastAction(Text(_settings, L"WaitingFreezetime"), false);
+    }
+
+    void PlayAlertSound()
+    {
+        if (!_settings.useSystemSound && !_settings.customWavPath.empty() && fs::exists(_settings.customWavPath))
+        {
+            PlaySoundW(_settings.customWavPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC);
+            return;
+        }
+
+        if (!PlaySoundW(L"SystemExclamation", nullptr, SND_ALIAS | SND_ASYNC))
+        {
+            MessageBeep(MB_ICONEXCLAMATION);
         }
     }
 
@@ -1323,21 +1519,18 @@ private:
     {
         if (!_settings.enabled)
         {
+            SetLastAction(Text(_settings, L"AlertSkippedDisabled"));
             return;
         }
 
         if (_settings.alertOnlyWhenNotFocused && IsCs2Foreground())
         {
+            SetLastAction(Text(_settings, L"AlertSkippedForeground"));
             return;
         }
 
-        if (!_settings.useSystemSound && !_settings.customWavPath.empty() && fs::exists(_settings.customWavPath))
-        {
-            PlaySoundW(_settings.customWavPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC);
-            return;
-        }
-
-        MessageBeep(MB_ICONEXCLAMATION);
+        PlayAlertSound();
+        SetLastAction(Text(_settings, L"AlertPlayed"));
     }
 };
 

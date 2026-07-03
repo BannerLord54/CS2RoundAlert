@@ -19,7 +19,7 @@ Download the `.exe` file, not `Source code`.
 1. Run `CS2RoundAlert.exe`.
 2. If Windows shows a warning, choose `More info` -> `Run anyway`.
 3. The app finds CS2 and installs the GSI config automatically.
-4. Use the small window to turn alerts on or off.
+4. Use the small window to test the sound and turn alerts on or off.
 5. Start or restart CS2.
 6. Keep CS2RoundAlert running in the system tray.
 
@@ -47,6 +47,7 @@ After this, restart CS2 once.
 Right-click the tray icon:
 
 - `Enable alerts`: turn alerts on or off
+- `Test sound`: play the alert sound once
 - `Open settings folder`: open app settings
 - `Open GitHub repo`: open this page
 - `Choose CS2 cfg folder`: manually select CS2 if auto-detect fails
@@ -80,9 +81,13 @@ Valve GSI documentation:
 
 Try this:
 
-1. Make sure CS2RoundAlert is still running in the tray.
-2. Right-click the tray icon and make sure alerts are enabled.
-3. Restart CS2.
+1. Click `Test sound` in the app. If that is silent, check Windows sound settings.
+2. Make sure CS2RoundAlert is still running in the tray.
+3. Make sure alerts are enabled.
+4. Restart CS2 after the app installs the GSI config.
+5. Tab out of CS2. The app skips the sound while CS2 is the focused window.
+
+The app window shows whether it has received GSI data from CS2. If it keeps saying `no CS2 data received yet`, CS2 has not loaded the GSI config.
 
 ### Windows warning
 
