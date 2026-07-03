@@ -19,8 +19,9 @@ Download the `.exe` file, not `Source code`.
 1. Run `CS2RoundAlert.exe`.
 2. If Windows shows a warning, choose `More info` -> `Run anyway`.
 3. The app finds CS2 and installs the GSI config automatically.
-4. Start or restart CS2.
-5. Keep CS2RoundAlert running in the system tray.
+4. Use the small window to turn alerts on or off.
+5. Start or restart CS2.
+6. Keep CS2RoundAlert running in the system tray.
 
 That is all.
 
@@ -53,6 +54,8 @@ Right-click the tray icon:
 - `Quit`: exit the app
 
 Default language is Auto.
+
+Closing the window hides it to the tray. Use `Quit` to exit.
 
 ## Is this safe for CS2?
 

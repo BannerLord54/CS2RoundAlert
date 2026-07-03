@@ -40,6 +40,9 @@ constexpr UINT ID_LANG_AUTO = 204;
 constexpr UINT ID_LANG_EN = 205;
 constexpr UINT ID_LANG_ZH = 206;
 constexpr UINT ID_QUIT = 207;
+constexpr UINT ID_STATUS = 300;
+constexpr UINT ID_GUI_ENABLE = 301;
+constexpr UINT ID_HIDE = 302;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
@@ -343,6 +346,9 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"OpenSettingsFolder") return zh ? L"打开设置文件夹" : L"Open settings folder";
     if (key == L"OpenGitHubRepo") return zh ? L"打开 GitHub 仓库" : L"Open GitHub repo";
     if (key == L"ChooseCfgFolder") return zh ? L"选择 CS2 cfg 文件夹" : L"Choose CS2 cfg folder";
+    if (key == L"StatusEnabled") return zh ? L"提醒：开启" : L"Alerts: On";
+    if (key == L"StatusDisabled") return zh ? L"提醒：关闭" : L"Alerts: Off";
+    if (key == L"HideToTray") return zh ? L"隐藏到托盘" : L"Hide to tray";
     if (key == L"Language") return zh ? L"语言" : L"Language";
     if (key == L"LanguageAuto") return zh ? L"自动（跟随系统）" : L"Auto (system)";
     if (key == L"LanguageEnglish") return L"English";
@@ -813,10 +819,25 @@ public:
         WNDCLASSW wc{};
         wc.lpfnWndProc = WindowProc;
         wc.hInstance = instance;
+        wc.hIcon = LoadIconW(nullptr, IDI_INFORMATION);
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         wc.lpszClassName = className;
         RegisterClassW(&wc);
 
-        _hwnd = CreateWindowExW(0, className, AppName, 0, 0, 0, 0, 0, nullptr, nullptr, instance, this);
+        _hwnd = CreateWindowExW(
+            0,
+            className,
+            AppName,
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            380,
+            230,
+            nullptr,
+            nullptr,
+            instance,
+            this);
         if (!_hwnd)
         {
             return 1;
@@ -825,6 +846,8 @@ public:
         const std::wstring installMessage = EnsureGsiConfig(_hwnd, _settings);
         SaveSettings(_settings);
         AddTrayIcon();
+        CreateMainControls();
+        ShowMainWindow();
         StartServer();
 
         if (!_settings.firstRunNotificationShown)
@@ -849,6 +872,12 @@ public:
 private:
     HINSTANCE _instance{};
     HWND _hwnd{};
+    HWND _statusLabel{};
+    HWND _enableCheck{};
+    HWND _chooseButton{};
+    HWND _githubButton{};
+    HWND _hideButton{};
+    HWND _quitButton{};
     NOTIFYICONDATAW _tray{};
     Settings _settings;
     std::mutex _settingsMutex;
@@ -883,6 +912,18 @@ private:
             return 0;
         }
 
+        if (message == WM_TRAYICON && (LOWORD(lParam) == WM_LBUTTONDBLCLK || LOWORD(lParam) == WM_LBUTTONUP))
+        {
+            ShowMainWindow();
+            return 0;
+        }
+
+        if (message == WM_CLOSE)
+        {
+            HideMainWindow();
+            return 0;
+        }
+
         if (message == WM_COMMAND)
         {
             HandleCommand(LOWORD(wParam));
@@ -896,6 +937,138 @@ private:
         }
 
         return DefWindowProcW(hwnd, message, wParam, lParam);
+    }
+
+    void CreateMainControls()
+    {
+        _statusLabel = CreateWindowExW(
+            0,
+            L"STATIC",
+            L"",
+            WS_CHILD | WS_VISIBLE,
+            24,
+            20,
+            320,
+            24,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_STATUS),
+            _instance,
+            nullptr);
+
+        _enableCheck = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"EnableAlerts").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            24,
+            54,
+            300,
+            26,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_GUI_ENABLE),
+            _instance,
+            nullptr);
+
+        _chooseButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"ChooseCfgFolder").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            24,
+            92,
+            150,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_CHOOSE_CFG),
+            _instance,
+            nullptr);
+
+        _githubButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"OpenGitHubRepo").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            190,
+            92,
+            150,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_OPEN_GITHUB),
+            _instance,
+            nullptr);
+
+        _hideButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"HideToTray").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            24,
+            136,
+            150,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_HIDE),
+            _instance,
+            nullptr);
+
+        _quitButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"Quit").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            190,
+            136,
+            150,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_QUIT),
+            _instance,
+            nullptr);
+
+        RefreshMainControls();
+    }
+
+    void RefreshMainControls()
+    {
+        if (_statusLabel)
+        {
+            SetWindowTextW(_statusLabel, Text(_settings, _settings.enabled ? L"StatusEnabled" : L"StatusDisabled").c_str());
+        }
+
+        if (_enableCheck)
+        {
+            SetWindowTextW(_enableCheck, Text(_settings, L"EnableAlerts").c_str());
+            SendMessageW(_enableCheck, BM_SETCHECK, _settings.enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
+
+        if (_chooseButton) SetWindowTextW(_chooseButton, Text(_settings, L"ChooseCfgFolder").c_str());
+        if (_githubButton) SetWindowTextW(_githubButton, Text(_settings, L"OpenGitHubRepo").c_str());
+        if (_hideButton) SetWindowTextW(_hideButton, Text(_settings, L"HideToTray").c_str());
+        if (_quitButton) SetWindowTextW(_quitButton, Text(_settings, L"Quit").c_str());
+    }
+
+    void CenterMainWindow()
+    {
+        RECT rect{};
+        GetWindowRect(_hwnd, &rect);
+        const int width = rect.right - rect.left;
+        const int height = rect.bottom - rect.top;
+        const int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        const int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+        SetWindowPos(_hwnd, nullptr, (screenWidth - width) / 2, (screenHeight - height) / 2, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+    }
+
+    void ShowMainWindow()
+    {
+        RefreshMainControls();
+        CenterMainWindow();
+        ShowWindow(_hwnd, SW_SHOWNORMAL);
+        SetForegroundWindow(_hwnd);
+    }
+
+    void HideMainWindow()
+    {
+        ShowWindow(_hwnd, SW_HIDE);
     }
 
     void AddTrayIcon()
@@ -960,6 +1133,15 @@ private:
         {
             _settings.enabled = !_settings.enabled;
             SaveSettings(_settings);
+            RefreshMainControls();
+            return;
+        }
+
+        if (command == ID_GUI_ENABLE)
+        {
+            _settings.enabled = SendMessageW(_enableCheck, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            SaveSettings(_settings);
+            RefreshMainControls();
             return;
         }
 
@@ -983,6 +1165,7 @@ private:
             {
                 const std::wstring message = WriteGsiConfig(cfg, _settings);
                 SaveSettings(_settings);
+                RefreshMainControls();
                 ShowBalloon(message, NIIF_INFO);
             }
             return;
@@ -994,6 +1177,13 @@ private:
             if (command == ID_LANG_EN) _settings.language = L"en";
             if (command == ID_LANG_ZH) _settings.language = L"zh-CN";
             SaveSettings(_settings);
+            RefreshMainControls();
+            return;
+        }
+
+        if (command == ID_HIDE)
+        {
+            HideMainWindow();
             return;
         }
 

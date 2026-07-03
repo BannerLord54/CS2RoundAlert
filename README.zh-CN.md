@@ -19,8 +19,9 @@
 1. 运行 `CS2RoundAlert.exe`。
 2. 如果 Windows 弹出警告，点 `更多信息` -> `仍要运行`。
 3. 程序会自动查找 CS2，并自动安装 GSI 配置。
-4. 启动或重启 CS2。
-5. 让 CS2RoundAlert 保持在系统托盘里运行。
+4. 在小窗口里开启或关闭提醒。
+5. 启动或重启 CS2。
+6. 让 CS2RoundAlert 保持在系统托盘里运行。
 
 就这样。
 
@@ -53,6 +54,8 @@ Counter-Strike Global Offensive\game\csgo\cfg
 - `Quit`：退出程序。
 
 默认是自动跟随系统语言。
+
+关闭窗口只是隐藏到托盘。要退出程序，请点 `Quit`。
 
 ## 对 CS2 安全吗？
 
