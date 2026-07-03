@@ -41,6 +41,7 @@ Check these:
 3. Restart CS2 once.
 4. For new-round alerts, tab out of CS2.
 5. If the app says `no CS2 data received yet`, CS2 has not loaded the config.
+6. If rest reminders do not appear, click `Open Windows notification settings` and allow notifications.
 
 ## Safety
 

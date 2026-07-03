@@ -43,6 +43,7 @@ constexpr UINT ID_LANG_ZH = 206;
 constexpr UINT ID_QUIT = 207;
 constexpr UINT ID_ROUND_END_ALERT = 208;
 constexpr UINT ID_REST_REMINDER = 209;
+constexpr UINT ID_OPEN_NOTIFICATION_SETTINGS = 210;
 constexpr UINT ID_STATUS = 300;
 constexpr UINT ID_GUI_ENABLE = 301;
 constexpr UINT ID_HIDE = 302;
@@ -58,6 +59,7 @@ constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t WindowClassName[] = L"CS2RoundAlertWindow";
 constexpr wchar_t SingleInstanceMutexName[] = L"Local\\CS2RoundAlertSingleInstance";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
+constexpr wchar_t NotificationSettingsUri[] = L"ms-settings:notifications";
 constexpr wchar_t ConfigFileName[] = L"gamestate_integration_cs2roundalert.cfg";
 constexpr wchar_t Cs2FolderName[] = L"Counter-Strike Global Offensive";
 
@@ -390,6 +392,7 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"EnableAlerts") return zh ? L"开启提示音" : L"Enable alerts";
     if (key == L"OpenSettingsFolder") return zh ? L"打开设置文件夹" : L"Open settings folder";
     if (key == L"OpenGitHubRepo") return zh ? L"打开 GitHub 仓库" : L"Open GitHub repo";
+    if (key == L"OpenNotificationSettings") return zh ? L"\u6253\u5f00 Windows \u901a\u77e5\u8bbe\u7f6e" : L"Open Windows notification settings";
     if (key == L"ChooseCfgFolder") return zh ? L"选择 CS2 cfg 文件夹" : L"Choose CS2 cfg folder";
     if (key == L"StatusEnabled") return zh ? L"提醒：开启" : L"Alerts: On";
     if (key == L"StatusDisabled") return zh ? L"提醒：关闭" : L"Alerts: Off";
@@ -904,7 +907,7 @@ public:
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             460,
-            510,
+            550,
             nullptr,
             nullptr,
             instance,
@@ -958,6 +961,7 @@ private:
     HWND _langZhRadio{};
     HWND _chooseButton{};
     HWND _githubButton{};
+    HWND _notificationButton{};
     HWND _testButton{};
     HWND _hideButton{};
     HWND _quitButton{};
@@ -1230,13 +1234,27 @@ private:
             _instance,
             nullptr);
 
+        _notificationButton = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"OpenNotificationSettings").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            246,
+            360,
+            190,
+            30,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_OPEN_NOTIFICATION_SETTINGS),
+            _instance,
+            nullptr);
+
         _hideButton = CreateWindowExW(
             0,
             L"BUTTON",
             Text(_settings, L"HideToTray").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            246,
-            360,
+            24,
+            404,
             190,
             30,
             _hwnd,
@@ -1249,9 +1267,9 @@ private:
             L"BUTTON",
             Text(_settings, L"Quit").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            24,
+            246,
             404,
-            412,
+            190,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_QUIT),
@@ -1310,6 +1328,7 @@ private:
         }
         if (_chooseButton) SetWindowTextW(_chooseButton, Text(_settings, L"ChooseCfgFolder").c_str());
         if (_githubButton) SetWindowTextW(_githubButton, Text(_settings, L"OpenGitHubRepo").c_str());
+        if (_notificationButton) SetWindowTextW(_notificationButton, Text(_settings, L"OpenNotificationSettings").c_str());
         if (_testButton) SetWindowTextW(_testButton, Text(_settings, L"TestSound").c_str());
         if (_hideButton) SetWindowTextW(_hideButton, Text(_settings, L"HideToTray").c_str());
         if (_quitButton) SetWindowTextW(_quitButton, Text(_settings, L"Quit").c_str());
@@ -1447,6 +1466,7 @@ private:
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, ID_TEST_SOUND, Text(_settings, L"TestSound").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_SETTINGS, Text(_settings, L"OpenSettingsFolder").c_str());
+        AppendMenuW(menu, MF_STRING, ID_OPEN_NOTIFICATION_SETTINGS, Text(_settings, L"OpenNotificationSettings").c_str());
         AppendMenuW(menu, MF_STRING, ID_OPEN_GITHUB, Text(_settings, L"OpenGitHubRepo").c_str());
         AppendMenuW(menu, MF_STRING, ID_CHOOSE_CFG, Text(_settings, L"ChooseCfgFolder").c_str());
 
@@ -1523,6 +1543,12 @@ private:
         if (command == ID_OPEN_GITHUB)
         {
             ShellExecuteW(nullptr, L"open", RepositoryUrl, nullptr, nullptr, SW_SHOWNORMAL);
+            return;
+        }
+
+        if (command == ID_OPEN_NOTIFICATION_SETTINGS)
+        {
+            ShellExecuteW(nullptr, L"open", NotificationSettingsUri, nullptr, nullptr, SW_SHOWNORMAL);
             return;
         }
 
