@@ -16,30 +16,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
         with:
-          dotnet-version: "8.0.x"
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
 
-      - name: Publish
-        run: >
-          dotnet publish src/CS2RoundAlert/CS2RoundAlert.csproj
-          -c Release
-          -r win-x64
-          --self-contained
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -o publish
-
-      - name: Create checksum
-        shell: pwsh
-        run: |
-          $hash = Get-FileHash publish/CS2RoundAlert.exe -Algorithm SHA256
-          "$($hash.Hash)  CS2RoundAlert.exe" | Set-Content publish/CS2RoundAlert.exe.sha256
+      - name: Build native exe
+        shell: msys2 {0}
+        run: bash scripts/build-native-msys2.sh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            publish/CS2RoundAlert.exe
-            publish/CS2RoundAlert.exe.sha256
+            artifacts/native/CS2RoundAlert.exe
+            artifacts/native/CS2RoundAlert.exe.sha256

@@ -6,6 +6,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 
 #include <algorithm>
 #include <atomic>
@@ -89,6 +90,31 @@ std::wstring Lower(std::wstring value)
     return value;
 }
 
+void AddUnique(std::vector<std::wstring>& values, const std::wstring& value)
+{
+    if (value.empty())
+    {
+        return;
+    }
+
+    fs::path path(value);
+    std::wstring normalized = path.make_preferred().wstring();
+    while (!normalized.empty() && (normalized.back() == L'\\' || normalized.back() == L'/'))
+    {
+        normalized.pop_back();
+    }
+
+    const std::wstring lowered = Lower(normalized);
+    const bool exists = std::any_of(values.begin(), values.end(), [&](const std::wstring& existing) {
+        return Lower(existing) == lowered;
+    });
+
+    if (!exists)
+    {
+        values.push_back(normalized);
+    }
+}
+
 std::string ReadText(const fs::path& path)
 {
     std::ifstream file(path, std::ios::binary);
@@ -120,6 +146,56 @@ std::wstring AppDataDirectory()
     }
 
     return (fs::path(result) / AppName).wstring();
+}
+
+std::wstring ReadRegistryString(HKEY root, const std::wstring& subkey, const std::wstring& valueName)
+{
+    const REGSAM views[] = { KEY_READ, KEY_READ | KEY_WOW64_32KEY, KEY_READ | KEY_WOW64_64KEY };
+
+    for (REGSAM view : views)
+    {
+        HKEY key = nullptr;
+        if (RegOpenKeyExW(root, subkey.c_str(), 0, view, &key) != ERROR_SUCCESS)
+        {
+            continue;
+        }
+
+        DWORD type = 0;
+        DWORD size = 0;
+        if (RegQueryValueExW(key, valueName.c_str(), nullptr, &type, nullptr, &size) != ERROR_SUCCESS ||
+            (type != REG_SZ && type != REG_EXPAND_SZ) || size == 0)
+        {
+            RegCloseKey(key);
+            continue;
+        }
+
+        std::wstring value(size / sizeof(wchar_t), L'\0');
+        const LONG read = RegQueryValueExW(key, valueName.c_str(), nullptr, &type, reinterpret_cast<LPBYTE>(value.data()), &size);
+        RegCloseKey(key);
+
+        if (read != ERROR_SUCCESS)
+        {
+            continue;
+        }
+
+        while (!value.empty() && value.back() == L'\0')
+        {
+            value.pop_back();
+        }
+
+        std::replace(value.begin(), value.end(), L'/', L'\\');
+
+        if (type == REG_EXPAND_SZ)
+        {
+            wchar_t expanded[MAX_PATH]{};
+            ExpandEnvironmentStringsW(value.c_str(), expanded, MAX_PATH);
+            return expanded;
+        }
+
+        return value;
+    }
+
+    return {};
 }
 
 std::wstring SettingsPath()
@@ -282,35 +358,94 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     return key;
 }
 
+std::vector<std::wstring> SteamRootCandidates()
+{
+    std::vector<std::wstring> roots;
+    wchar_t programFilesX86[MAX_PATH]{};
+    wchar_t programFiles[MAX_PATH]{};
+    GetEnvironmentVariableW(L"ProgramFiles(x86)", programFilesX86, MAX_PATH);
+    GetEnvironmentVariableW(L"ProgramFiles", programFiles, MAX_PATH);
+
+    AddUnique(roots, (fs::path(programFilesX86) / L"Steam").wstring());
+    AddUnique(roots, (fs::path(programFiles) / L"Steam").wstring());
+
+    const std::vector<std::pair<HKEY, std::wstring>> steamKeys = {
+        { HKEY_CURRENT_USER, L"Software\\Valve\\Steam" },
+        { HKEY_LOCAL_MACHINE, L"Software\\Valve\\Steam" },
+        { HKEY_LOCAL_MACHINE, L"Software\\WOW6432Node\\Valve\\Steam" }
+    };
+
+    for (const auto& [root, key] : steamKeys)
+    {
+        AddUnique(roots, ReadRegistryString(root, key, L"SteamPath"));
+        AddUnique(roots, ReadRegistryString(root, key, L"InstallPath"));
+
+        const std::wstring steamExe = ReadRegistryString(root, key, L"SteamExe");
+        if (!steamExe.empty())
+        {
+            AddUnique(roots, fs::path(steamExe).parent_path().wstring());
+        }
+    }
+
+    const DWORD drives = GetLogicalDrives();
+    for (wchar_t letter = L'A'; letter <= L'Z'; ++letter)
+    {
+        if ((drives & (1 << (letter - L'A'))) == 0)
+        {
+            continue;
+        }
+
+        const std::wstring drive = std::wstring(1, letter) + L":\\";
+        if (GetDriveTypeW(drive.c_str()) != DRIVE_FIXED)
+        {
+            continue;
+        }
+
+        AddUnique(roots, (fs::path(drive) / L"SteamLibrary").wstring());
+        AddUnique(roots, (fs::path(drive) / L"Steam").wstring());
+        AddUnique(roots, (fs::path(drive) / L"Games" / L"Steam").wstring());
+        AddUnique(roots, (fs::path(drive) / L"Program Files (x86)" / L"Steam").wstring());
+        AddUnique(roots, (fs::path(drive) / L"Program Files" / L"Steam").wstring());
+    }
+
+    return roots;
+}
+
 std::vector<std::wstring> SteamLibraries()
 {
     std::vector<std::wstring> libraries;
-    wchar_t programFilesX86[MAX_PATH]{};
-    GetEnvironmentVariableW(L"ProgramFiles(x86)", programFilesX86, MAX_PATH);
-
-    fs::path defaultSteam = fs::path(programFilesX86) / L"Steam";
-    if (fs::exists(defaultSteam))
-    {
-        libraries.push_back(defaultSteam.wstring());
-    }
-
-    const fs::path libraryFile = defaultSteam / L"steamapps" / L"libraryfolders.vdf";
-    const std::string content = ReadText(libraryFile);
     const std::regex pattern("\"path\"\\s+\"([^\"]+)\"", std::regex_constants::icase);
 
-    for (std::sregex_iterator it(content.begin(), content.end(), pattern), end; it != end; ++it)
+    for (const std::wstring& root : SteamRootCandidates())
     {
-        std::string raw = (*it)[1].str();
-        for (size_t pos = 0; (pos = raw.find("\\\\", pos)) != std::string::npos;)
+        if (!fs::exists(root))
         {
-            raw.replace(pos, 2, "\\");
-            ++pos;
+            continue;
         }
 
-        std::wstring path = Utf8ToWide(raw);
-        if (fs::exists(path) && std::find(libraries.begin(), libraries.end(), path) == libraries.end())
+        AddUnique(libraries, root);
+
+        const fs::path libraryFile = fs::path(root) / L"steamapps" / L"libraryfolders.vdf";
+        const std::string content = ReadText(libraryFile);
+        if (content.empty())
         {
-            libraries.push_back(path);
+            continue;
+        }
+
+        for (std::sregex_iterator it(content.begin(), content.end(), pattern), end; it != end; ++it)
+        {
+            std::string raw = (*it)[1].str();
+            for (size_t pos = 0; (pos = raw.find("\\\\", pos)) != std::string::npos;)
+            {
+                raw.replace(pos, 2, "\\");
+                ++pos;
+            }
+
+            const std::wstring path = Utf8ToWide(raw);
+            if (fs::exists(path))
+            {
+                AddUnique(libraries, path);
+            }
         }
     }
 
@@ -342,11 +477,96 @@ std::wstring ResolveCfgDirectory(const std::wstring& selected)
     return {};
 }
 
+std::wstring RegistryCs2CfgDirectory()
+{
+    const std::vector<std::pair<HKEY, std::wstring>> appKeys = {
+        { HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730" },
+        { HKEY_LOCAL_MACHINE, L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730" },
+        { HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730" }
+    };
+
+    for (const auto& [root, key] : appKeys)
+    {
+        const std::wstring installLocation = ReadRegistryString(root, key, L"InstallLocation");
+        if (installLocation.empty())
+        {
+            continue;
+        }
+
+        const fs::path cfg = fs::path(installLocation) / L"game" / L"csgo" / L"cfg";
+        if (fs::exists(cfg))
+        {
+            return cfg.wstring();
+        }
+    }
+
+    return {};
+}
+
+std::wstring RunningCs2CfgDirectory()
+{
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+    {
+        return {};
+    }
+
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    std::wstring result;
+
+    if (Process32FirstW(snapshot, &entry))
+    {
+        do
+        {
+            if (Lower(entry.szExeFile) != L"cs2.exe")
+            {
+                continue;
+            }
+
+            HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+            if (!process)
+            {
+                continue;
+            }
+
+            wchar_t path[MAX_PATH]{};
+            DWORD size = MAX_PATH;
+            if (QueryFullProcessImageNameW(process, 0, path, &size))
+            {
+                fs::path current = fs::path(path).parent_path();
+                for (int i = 0; i < 8 && !current.empty(); ++i)
+                {
+                    const fs::path cfg = current / L"game" / L"csgo" / L"cfg";
+                    if (fs::exists(cfg))
+                    {
+                        result = cfg.wstring();
+                        break;
+                    }
+
+                    current = current.parent_path();
+                }
+            }
+
+            CloseHandle(process);
+        } while (result.empty() && Process32NextW(snapshot, &entry));
+    }
+
+    CloseHandle(snapshot);
+    return result;
+}
+
 std::wstring FindCs2CfgDirectory(const Settings& settings)
 {
     if (!settings.cs2CfgFolderPath.empty() && fs::exists(settings.cs2CfgFolderPath))
     {
         return settings.cs2CfgFolderPath;
+    }
+
+    const std::wstring registryCfg = RegistryCs2CfgDirectory();
+    if (!registryCfg.empty())
+    {
+        return registryCfg;
     }
 
     for (const std::wstring& library : SteamLibraries())
@@ -356,6 +576,12 @@ std::wstring FindCs2CfgDirectory(const Settings& settings)
         {
             return cfg.wstring();
         }
+    }
+
+    const std::wstring runningCfg = RunningCs2CfgDirectory();
+    if (!runningCfg.empty())
+    {
+        return runningCfg;
     }
 
     return {};

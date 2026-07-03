@@ -18,8 +18,9 @@
 
 1. 运行 `CS2RoundAlert.exe`。
 2. 如果 Windows 弹出警告，点 `更多信息` -> `仍要运行`。
-3. 启动或重启 CS2。
-4. 让 CS2RoundAlert 保持在系统托盘里运行。
+3. 程序会自动查找 CS2，并自动安装 GSI 配置。
+4. 启动或重启 CS2。
+5. 让 CS2RoundAlert 保持在系统托盘里运行。
 
 就这样。
 
@@ -30,9 +31,9 @@
 
 ## 第一次运行
 
-第一次运行时，程序会自动安装 CS2 的 GSI 配置文件。
+第一次运行时，程序会从 Steam 自动查找 CS2，并自动安装 GSI 配置文件。
 
-如果程序找不到 CS2，它会让你手动选择 CS2 配置文件夹：
+如果自动查找失败，右键托盘图标，选择 `选择 CS2 cfg 文件夹`：
 
 ```text
 Counter-Strike Global Offensive\game\csgo\cfg
@@ -47,6 +48,7 @@ Counter-Strike Global Offensive\game\csgo\cfg
 - `Enable alerts`：开启或关闭提示音。
 - `Open settings folder`：打开设置文件夹。
 - `Open GitHub repo`：打开项目页面。
+- `Choose CS2 cfg folder`：自动查找失败时，手动选择 CS2。
 - `Language`：选择自动、英文或中文。
 - `Quit`：退出程序。
 
@@ -104,10 +106,10 @@ Valve GSI 文档：
 
 ## 开发者
 
-使用 .NET 8 构建：
+使用 MSYS2 MinGW64 构建：
 
 ```powershell
-dotnet publish src/CS2RoundAlert/CS2RoundAlert.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
+C:\msys64\usr\bin\bash.exe -lc 'bash /d/Path/To/CS2RoundAlert/scripts/build-native-msys2.sh'
 ```
 
 ## 许可证

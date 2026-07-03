@@ -18,8 +18,9 @@ Download the `.exe` file, not `Source code`.
 
 1. Run `CS2RoundAlert.exe`.
 2. If Windows shows a warning, choose `More info` -> `Run anyway`.
-3. Start or restart CS2.
-4. Keep CS2RoundAlert running in the system tray.
+3. The app finds CS2 and installs the GSI config automatically.
+4. Start or restart CS2.
+5. Keep CS2RoundAlert running in the system tray.
 
 That is all.
 
@@ -30,9 +31,9 @@ When the next round begins:
 
 ## First run
 
-On first run, the app installs a CS2 Game State Integration config file automatically.
+On first run, the app tries to find CS2 from Steam and installs a CS2 Game State Integration config file automatically.
 
-If it cannot find CS2, it will ask you to choose the CS2 config folder:
+If auto-detection fails, right-click the tray icon and choose `Choose CS2 cfg folder`:
 
 ```text
 Counter-Strike Global Offensive\game\csgo\cfg
@@ -47,6 +48,7 @@ Right-click the tray icon:
 - `Enable alerts`: turn alerts on or off
 - `Open settings folder`: open app settings
 - `Open GitHub repo`: open this page
+- `Choose CS2 cfg folder`: manually select CS2 if auto-detect fails
 - `Language`: choose Auto, English, or Chinese
 - `Quit`: exit the app
 
@@ -104,10 +106,10 @@ Most users do not need to edit this file.
 
 ## For developers
 
-Build with .NET 8:
+Build with MSYS2 MinGW64:
 
 ```powershell
-dotnet publish src/CS2RoundAlert/CS2RoundAlert.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
+C:\msys64\usr\bin\bash.exe -lc 'bash /d/Path/To/CS2RoundAlert/scripts/build-native-msys2.sh'
 ```
 
 ## License
