@@ -50,6 +50,7 @@ constexpr UINT ID_GSI_STATUS = 304;
 constexpr UINT ID_LAST_ACTION = 305;
 constexpr UINT ID_GUI_ROUND_END = 306;
 constexpr UINT ID_INFO = 307;
+constexpr UINT ID_LANGUAGE_LABEL = 308;
 
 constexpr wchar_t AppName[] = L"CS2RoundAlert";
 constexpr wchar_t RepositoryUrl[] = L"https://github.com/BannerLord54/CS2RoundAlert";
@@ -407,8 +408,8 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"AlertSkippedForeground") return zh ? L"\u672a\u64ad\u653e\uff1aCS2 \u6b63\u5728\u524d\u53f0" : L"Skipped: CS2 is foreground";
     if (key == L"TestSound") return zh ? L"\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound";
     if (key == L"TestSoundPlayed") return zh ? L"\u5df2\u64ad\u653e\u6d4b\u8bd5\u63d0\u793a\u97f3" : L"Test sound played";
-    if (key == L"Info") return zh ? L"\u9ed8\u8ba4\uff1a\u5207\u51fa CS2 \u540e\uff0c\u65b0\u56de\u5408\u5f00\u59cb\u624d\u54cd\u3002\r\n\u53ef\u9009\uff1a\u56de\u5408\u7ed3\u675f\u65f6\uff0c\u5373\u4f7f\u5728\u6e38\u620f\u4e2d\u4e5f\u54cd\u3002" : L"Default: alert at new round only when CS2 is not focused.\r\nOptional: round-end alert can play while you are in CS2.";
-    if (key == L"AlertOnRoundEnd") return zh ? L"\u56de\u5408\u7ed3\u675f\u65f6\u4e5f\u63d0\u9192" : L"Also alert when a round ends";
+    if (key == L"Info") return zh ? L"\u9ed8\u8ba4\uff1a\u5207\u51fa CS2 \u540e\uff0c\u65b0\u56de\u5408\u5f00\u59cb\u624d\u54cd\u3002\r\n\u52fe\u9009\u4e0b\u65b9\u9009\u9879\uff1a\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u4f1a\u54cd\u3002" : L"Default: new-round alert only plays after you tab out of CS2.\r\nOptional: round-end alert can also play while you are in CS2.";
+    if (key == L"AlertOnRoundEnd") return zh ? L"\u5728\u6e38\u620f\u4e2d\u56de\u5408\u7ed3\u675f\u4e5f\u54cd" : L"Also play when a round ends in game";
     if (key == L"RoundEndAlertPlayed") return zh ? L"\u5df2\u64ad\u653e\u56de\u5408\u7ed3\u675f\u63d0\u793a\u97f3" : L"Round-end alert played";
 
     return key;
@@ -882,8 +883,8 @@ public:
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            430,
-            390,
+            460,
+            450,
             nullptr,
             nullptr,
             instance,
@@ -930,6 +931,10 @@ private:
     HWND _roundEndCheck{};
     HWND _gsiLabel{};
     HWND _lastActionLabel{};
+    HWND _languageLabel{};
+    HWND _langAutoRadio{};
+    HWND _langEnRadio{};
+    HWND _langZhRadio{};
     HWND _chooseButton{};
     HWND _githubButton{};
     HWND _testButton{};
@@ -1014,7 +1019,7 @@ private:
             WS_CHILD | WS_VISIBLE | SS_LEFT,
             24,
             16,
-            372,
+            412,
             44,
             _hwnd,
             reinterpret_cast<HMENU>(ID_INFO),
@@ -1028,7 +1033,7 @@ private:
             WS_CHILD | WS_VISIBLE,
             24,
             70,
-            372,
+            412,
             24,
             _hwnd,
             reinterpret_cast<HMENU>(ID_STATUS),
@@ -1042,7 +1047,7 @@ private:
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             24,
             98,
-            372,
+            412,
             26,
             _hwnd,
             reinterpret_cast<HMENU>(ID_GUI_ENABLE),
@@ -1056,7 +1061,7 @@ private:
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             24,
             126,
-            372,
+            412,
             26,
             _hwnd,
             reinterpret_cast<HMENU>(ID_GUI_ROUND_END),
@@ -1070,7 +1075,7 @@ private:
             WS_CHILD | WS_VISIBLE,
             24,
             164,
-            372,
+            412,
             22,
             _hwnd,
             reinterpret_cast<HMENU>(ID_GSI_STATUS),
@@ -1084,10 +1089,66 @@ private:
             WS_CHILD | WS_VISIBLE,
             24,
             190,
-            372,
+            412,
             22,
             _hwnd,
             reinterpret_cast<HMENU>(ID_LAST_ACTION),
+            _instance,
+            nullptr);
+
+        _languageLabel = CreateWindowExW(
+            0,
+            L"STATIC",
+            Text(_settings, L"Language").c_str(),
+            WS_CHILD | WS_VISIBLE,
+            24,
+            224,
+            76,
+            22,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_LANGUAGE_LABEL),
+            _instance,
+            nullptr);
+
+        _langAutoRadio = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"LanguageAuto").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON | WS_GROUP,
+            104,
+            220,
+            122,
+            26,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_LANG_AUTO),
+            _instance,
+            nullptr);
+
+        _langEnRadio = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"LanguageEnglish").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+            232,
+            220,
+            82,
+            26,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_LANG_EN),
+            _instance,
+            nullptr);
+
+        _langZhRadio = CreateWindowExW(
+            0,
+            L"BUTTON",
+            Text(_settings, L"LanguageChinese").c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+            320,
+            220,
+            86,
+            26,
+            _hwnd,
+            reinterpret_cast<HMENU>(ID_LANG_ZH),
             _instance,
             nullptr);
 
@@ -1097,8 +1158,8 @@ private:
             Text(_settings, L"TestSound").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            230,
-            172,
+            264,
+            190,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_TEST_SOUND),
@@ -1110,9 +1171,9 @@ private:
             L"BUTTON",
             Text(_settings, L"ChooseCfgFolder").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            224,
-            230,
-            172,
+            246,
+            264,
+            190,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_CHOOSE_CFG),
@@ -1125,8 +1186,8 @@ private:
             Text(_settings, L"OpenGitHubRepo").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            274,
-            172,
+            308,
+            190,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_OPEN_GITHUB),
@@ -1138,9 +1199,9 @@ private:
             L"BUTTON",
             Text(_settings, L"HideToTray").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            224,
-            274,
-            172,
+            246,
+            308,
+            190,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_HIDE),
@@ -1153,8 +1214,8 @@ private:
             Text(_settings, L"Quit").c_str(),
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             24,
-            318,
-            372,
+            352,
+            412,
             30,
             _hwnd,
             reinterpret_cast<HMENU>(ID_QUIT),
@@ -1189,6 +1250,22 @@ private:
         }
 
         RefreshStatusLabels();
+        if (_languageLabel) SetWindowTextW(_languageLabel, Text(_settings, L"Language").c_str());
+        if (_langAutoRadio)
+        {
+            SetWindowTextW(_langAutoRadio, Text(_settings, L"LanguageAuto").c_str());
+            SendMessageW(_langAutoRadio, BM_SETCHECK, _settings.language == L"auto" ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
+        if (_langEnRadio)
+        {
+            SetWindowTextW(_langEnRadio, Text(_settings, L"LanguageEnglish").c_str());
+            SendMessageW(_langEnRadio, BM_SETCHECK, _settings.language == L"en" ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
+        if (_langZhRadio)
+        {
+            SetWindowTextW(_langZhRadio, Text(_settings, L"LanguageChinese").c_str());
+            SendMessageW(_langZhRadio, BM_SETCHECK, _settings.language == L"zh-CN" ? BST_CHECKED : BST_UNCHECKED, 0);
+        }
         if (_chooseButton) SetWindowTextW(_chooseButton, Text(_settings, L"ChooseCfgFolder").c_str());
         if (_githubButton) SetWindowTextW(_githubButton, Text(_settings, L"OpenGitHubRepo").c_str());
         if (_testButton) SetWindowTextW(_testButton, Text(_settings, L"TestSound").c_str());
