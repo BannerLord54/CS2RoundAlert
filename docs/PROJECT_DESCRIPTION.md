@@ -4,6 +4,14 @@
 
 Portable CS2 round reminder using Valve official GSI. No memory reading, no injection, no input automation.
 
+## GitHub Website
+
+https://github.com/BannerLord54/CS2RoundAlert/releases/latest
+
+## GitHub Topics
+
+cs2, counter-strike-2, gsi, windows, round-alert, portable, open-source
+
 ## English Short Description
 
 CS2RoundAlert is a lightweight Windows tool for Counter-Strike 2. It plays a sound when a new round starts while CS2 is not focused, so you can tab out without missing buy time.
