@@ -392,13 +392,13 @@ std::wstring Text(const Settings& settings, const std::wstring& key)
     if (key == L"EnableAlerts") return zh ? L"开启提示音" : L"Enable alerts";
     if (key == L"OpenSettingsFolder") return zh ? L"打开设置文件夹" : L"Open settings folder";
     if (key == L"OpenGitHubRepo") return zh ? L"打开 GitHub 仓库" : L"Open GitHub repo";
-    if (key == L"OpenNotificationSettings") return zh ? L"\u6253\u5f00 Windows \u901a\u77e5\u8bbe\u7f6e" : L"Open Windows notification settings";
+    if (key == L"OpenNotificationSettings") return zh ? L"\u6253\u5f00\u901a\u77e5\u8bbe\u7f6e" : L"Open notifications";
     if (key == L"ChooseCfgFolder") return zh ? L"选择 CS2 cfg 文件夹" : L"Choose CS2 cfg folder";
     if (key == L"StatusEnabled") return zh ? L"提醒：开启" : L"Alerts: On";
     if (key == L"StatusDisabled") return zh ? L"提醒：关闭" : L"Alerts: Off";
     if (key == L"HideToTray") return zh ? L"隐藏到托盘" : L"Hide to tray";
     if (key == L"Language") return zh ? L"语言" : L"Language";
-    if (key == L"LanguageAuto") return zh ? L"自动（跟随系统）" : L"Auto (system)";
+    if (key == L"LanguageAuto") return zh ? L"自动" : L"Auto";
     if (key == L"LanguageEnglish") return L"English";
     if (key == L"LanguageChinese") return L"中文";
     if (key == L"Quit") return zh ? L"退出" : L"Quit";

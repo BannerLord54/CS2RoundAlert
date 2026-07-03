@@ -2,11 +2,11 @@
 
 [中文说明](README.zh-CN.md)
 
-A small Windows tool for CS2.
+A lightweight, portable Windows utility for Counter-Strike 2.
 
 When you tab out of CS2, it plays a sound when the next round starts.
 
-![CS2RoundAlert main window](docs/assets/cs2roundalert-main.png)
+![CS2RoundAlert main window](docs/assets/cs2roundalert-main-en.png)
 
 ## Download
 
@@ -41,7 +41,7 @@ Check these:
 3. Restart CS2 once.
 4. For new-round alerts, tab out of CS2.
 5. If the app says `no CS2 data received yet`, CS2 has not loaded the config.
-6. If rest reminders do not appear, click `Open Windows notification settings` and allow notifications.
+6. If rest reminders do not appear, click `Open notifications` and allow notifications.
 
 ## Safety
 

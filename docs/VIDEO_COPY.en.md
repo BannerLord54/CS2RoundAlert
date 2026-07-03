@@ -58,7 +58,7 @@ If you want a sound when a round ends in-game, enable that option.
 
 If you want a rest reminder after a full match ends, enable the rest reminder option.
 
-If the rest notification does not appear, click `Open Windows notification settings` and allow notifications.
+If the rest notification does not appear, click `Open notifications` and allow notifications.
 
 Safety:
 
@@ -106,7 +106,7 @@ No sound? Check this:
 1. Click `Test sound`
 2. Restart CS2
 3. For new-round alerts, tab out of the game
-4. If rest notifications do not appear, click `Open Windows notification settings`
+4. If rest notifications do not appear, click `Open notifications`
 
 ## Recording Order
 
