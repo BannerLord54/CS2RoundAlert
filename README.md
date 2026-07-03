@@ -20,8 +20,9 @@ Download the `.exe` file, not `Source code`.
 2. If Windows shows a warning, choose `More info` -> `Run anyway`.
 3. The app finds CS2 and installs the GSI config automatically.
 4. Use the small window to test the sound and turn alerts on or off.
-5. Start or restart CS2.
-6. Keep CS2RoundAlert running in the system tray.
+5. Optional: enable `Also alert when a round ends`.
+6. Start or restart CS2.
+7. Keep CS2RoundAlert running in the system tray.
 
 That is all.
 
@@ -29,6 +30,8 @@ When the next round begins:
 
 - if CS2 is already focused, nothing happens
 - if you are in another window, a sound plays
+
+If `Also alert when a round ends` is enabled, the app also plays a sound when `round.phase` becomes `over`. This alert can play while CS2 is focused.
 
 ## First run
 
@@ -47,6 +50,7 @@ After this, restart CS2 once.
 Right-click the tray icon:
 
 - `Enable alerts`: turn alerts on or off
+- `Also alert when a round ends`: optional round-end sound
 - `Test sound`: play the alert sound once
 - `Open settings folder`: open app settings
 - `Open GitHub repo`: open this page
